@@ -28,6 +28,7 @@ Whisper Input 是受到即友[FeiTTT](https://web.okjike.com/u/DB98BE7A-9DBB-473
 
 ### 前提
 请确保你的本地有 Python 环境，并且 Python 版本不低于 3.10。
+#### 3.13.1会有光标切换窗口报错的问题，这是个known issue，暂无解决方案，3.12.5无报错
 
 ### FunAudioLLM/SenseVoiceSmall 模型配置方法
 1. 注册 SiliconFlow 账户：https://cloud.siliconflow.cn/i/RXikvHE2
