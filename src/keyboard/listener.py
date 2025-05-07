@@ -67,8 +67,8 @@ class KeyboardManager:
         except KeyError:
             logger.error(f"无效的翻译按钮配置：{translations_button}")
 
-        logger.info(f"按住 {transcriptions_button} 键：实时语音转录（保持原文）")
-        logger.info(f"按住 {translations_button} + {transcriptions_button} 键：实时语音翻译（翻译成英文）")
+        logger.info(f"按住 {transcriptions_button} + {translations_button} 键：实时语音转录")
+        logger.info(f"单独按住 {transcriptions_button} 键：不执行任何操作")
     
     @property
     def state(self):
@@ -85,56 +85,54 @@ class KeyboardManager:
             message = self._state_messages[new_state]
             
             # 根据状态转换类型显示不同消息
-            match new_state:
-                case InputState.RECORDING :
-                    # 录音状态
-                    self.temp_text_length = 0
-                    self.type_temp_text(message)
-                    self.on_record_start()
-                    
+            if new_state == InputState.RECORDING:
+                # 录音状态
+                self.temp_text_length = 0
+                self.type_temp_text(message)
+                self.on_record_start()
                 
-                case InputState.RECORDING_TRANSLATE:
-                    # 翻译,录音状态
-                    self.temp_text_length = 0
-                    self.type_temp_text(message)
-                    self.on_translate_start()
+            elif new_state == InputState.RECORDING_TRANSLATE:
+                # 翻译,录音状态
+                self.temp_text_length = 0
+                self.type_temp_text(message)
+                self.on_translate_start()
 
-                case InputState.PROCESSING:
-                    self._delete_previous_text()
-                    self.type_temp_text(message)
-                    self.processing_text = message
-                    self.on_record_stop()
+            elif new_state == InputState.PROCESSING:
+                self._delete_previous_text()
+                self.type_temp_text(message)
+                self.processing_text = message
+                self.on_record_stop()
 
-                case InputState.TRANSLATING:
-                    # 翻译状态
-                    self._delete_previous_text()                 
-                    self.type_temp_text(message)
-                    self.processing_text = message
-                    self.on_translate_stop()
-                
-                case InputState.WARNING:
-                    # 警告状态
-                    message = message(self.warning_message)
-                    self._delete_previous_text()
-                    self.type_temp_text(message)
-                    self.warning_message = None
-                    self._schedule_message_clear()     
-                
-                case InputState.ERROR:
-                    # 错误状态
-                    message = message(self.error_message)
-                    self._delete_previous_text()
-                    self.type_temp_text(message)
-                    self.error_message = None
-                    self._schedule_message_clear()  
+            elif new_state == InputState.TRANSLATING:
+                # 翻译状态
+                self._delete_previous_text()                 
+                self.type_temp_text(message)
+                self.processing_text = message
+                self.on_translate_stop()
             
-                case InputState.IDLE:
-                    # 空闲状态，清除所有临时文本
-                    self.processing_text = None
-                
-                case _:
-                    # 其他状态
-                    self.type_temp_text(message)
+            elif new_state == InputState.WARNING:
+                # 警告状态
+                message = message(self.warning_message)
+                self._delete_previous_text()
+                self.type_temp_text(message)
+                self.warning_message = None
+                self._schedule_message_clear()     
+            
+            elif new_state == InputState.ERROR:
+                # 错误状态
+                message = message(self.error_message)
+                self._delete_previous_text()
+                self.type_temp_text(message)
+                self.error_message = None
+                self._schedule_message_clear()  
+        
+            elif new_state == InputState.IDLE:
+                # 空闲状态，清除所有临时文本
+                self.processing_text = None
+            
+            else:
+                # 其他状态
+                self.type_temp_text(message)
     
     def _schedule_message_clear(self):
         """计划清除消息"""
@@ -255,13 +253,9 @@ class KeyboardManager:
                     
                     # 达到阈值时触发相应功能
                     if self.option_pressed and self.shift_pressed and self.state.can_start_recording:
-                        self.state = InputState.RECORDING_TRANSLATE
-                        # self.on_translate_start()
-                        self.has_triggered = True
-                    elif self.option_pressed and not self.shift_pressed and self.state.can_start_recording:
                         self.state = InputState.RECORDING
-                        # self.on_record_start()
                         self.has_triggered = True
+                    # 移除单独按 Option 键触发录音的逻辑
                 
                 time.sleep(0.01)  # 短暂休眠以降低 CPU 使用率
 
@@ -289,24 +283,16 @@ class KeyboardManager:
         """按键释放时的回调"""
         try:
             if key == self.transcriptions_button:# Key.f8:  # Option 键释放
-                self.shift_pressed = False
                 self.option_pressed = False
                 self.option_press_time = None
                 self.is_checking_duration = False
                 
                 if self.has_triggered:
-                    if self.state == InputState.RECORDING_TRANSLATE:
-                        self.state = InputState.TRANSLATING
-                    elif self.state == InputState.RECORDING:
-                        self.state = InputState.PROCESSING
+                    self.state = InputState.PROCESSING
                     self.has_triggered = False
             elif key == self.translations_button:#Key.f7:
                 self.shift_pressed = False
-                if (self.state == InputState.RECORDING_TRANSLATE and 
-                    not self.option_pressed and 
-                    self.has_triggered):
-                    self.state = InputState.TRANSLATING
-                    self.has_triggered = False
+                # 移除独立处理翻译键释放的逻辑
         except AttributeError:
             pass
     
