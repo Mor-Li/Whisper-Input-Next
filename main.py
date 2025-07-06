@@ -10,6 +10,7 @@ from src.keyboard.listener import KeyboardManager, check_accessibility_permissio
 from src.transcription.whisper import WhisperProcessor
 from src.utils.logger import logger
 from src.transcription.senseVoiceSmall import SenseVoiceSmallProcessor
+from src.transcription.local_whisper import LocalWhisperProcessor
 
 
 def check_microphone_permissions():
@@ -92,14 +93,16 @@ class VoiceAssistant:
         self.keyboard_manager.start_listening()
 
 def main():
-    # 判断是 Whisper 还是 SiliconFlow
+    # 判断是 Whisper 还是 SiliconFlow 还是本地whisper.cpp
     service_platform = os.getenv("SERVICE_PLATFORM", "siliconflow")
     if service_platform == "groq":
         audio_processor = WhisperProcessor()
     elif service_platform == "siliconflow":
         audio_processor = SenseVoiceSmallProcessor()
+    elif service_platform == "local":
+        audio_processor = LocalWhisperProcessor()
     else:
-        raise ValueError(f"无效的服务平台: {service_platform}")
+        raise ValueError(f"无效的服务平台: {service_platform}, 支持的平台: groq, siliconflow, local")
     try:
         assistant = VoiceAssistant(audio_processor)
         assistant.run()

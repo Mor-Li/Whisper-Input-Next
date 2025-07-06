@@ -27,11 +27,74 @@ Whisper Input 是受到即友[FeiTTT](https://web.okjike.com/u/DB98BE7A-9DBB-473
 
 ## 使用方法
 
-> 目前支持两种免费的 ASR 模型，分别是 Groq 托管的 `Whisper Large V3 系列` 以及 SiliconFlow 托管的 `FunAudioLLM/SenseVoiceSmall` 系列。所以以下配置只需要二选一即可。
+> 目前支持三种 ASR 模型，分别是本地 `whisper.cpp` 模型、Groq 托管的 `Whisper Large V3 系列` 以及 SiliconFlow 托管的 `FunAudioLLM/SenseVoiceSmall` 系列。以下配置三选一即可。
 
 ### 前提
 请确保你的本地有 Python 环境，并且 Python 版本不低于 3.10。
 #### 3.13.1会有光标切换窗口报错的问题，这是个known issue，暂无解决方案，3.12.5无报错
+
+### 本地 whisper.cpp 模型配置方法 【推荐：完全本地化，无需网络，速度快】
+1. 安装并编译 whisper.cpp：
+    ```bash
+    git clone https://github.com/ggerganov/whisper.cpp.git
+    cd whisper.cpp
+    make
+    ```
+
+2. 下载模型文件（large-v3模型约1.5GB）：
+    ```bash
+    # 下载large-v3模型
+    bash ./models/download-ggml-model.sh large-v3
+    ```
+
+3. 克隆并配置本项目：
+    ```bash
+    git clone git@github.com:ErlichLiu/Whisper-Input.git
+    cd Whisper-Input
+    ```
+
+4. 创建虚拟环境 【推荐】
+    ```bash
+    python -m venv venv
+    ```
+
+5. 重命名 `.env` 文件
+    ```bash
+    cp .env.example .env
+    ```
+
+6. 配置 `.env` 文件，设置本地whisper.cpp路径：
+    ```bash
+    SERVICE_PLATFORM=local
+    WHISPER_CLI_PATH=/path/to/your/whisper.cpp/build/bin/whisper-cli
+    WHISPER_MODEL_PATH=models/ggml-large-v3.bin
+    ```
+
+7. 激活虚拟环境
+    ```bash
+    # macOS / Linux
+    source venv/bin/activate
+    
+    # Windows
+    .\venv\Scripts\activate
+    ```
+
+8. 安装依赖
+    ```bash
+    pip install pip-tools
+    pip-compile requirements.in
+    pip install -r requirements.txt
+    ```
+
+9. 测试本地whisper.cpp配置（可选）
+    ```bash
+    python test_local_whisper.py
+    ```
+
+10. 运行程序
+    ```bash
+    python main.py
+    ```
 
 ### FunAudioLLM/SenseVoiceSmall 模型配置方法
 1. 注册 SiliconFlow 账户：https://cloud.siliconflow.cn/i/RXikvHE2
@@ -157,6 +220,11 @@ Whisper Input 是受到即友[FeiTTT](https://web.okjike.com/u/DB98BE7A-9DBB-473
 **如果你也有想法：** 欢迎 Fork 和 PR，如果你在使用当中遇到问题，欢迎提交 Issue。
 
 ## 更新日志
+
+#### 2025.07.06
+> 1. 新增本地 whisper.cpp 支持，完全本地化处理，无需网络连接
+> 2. 添加 LocalWhisperProcessor 处理器，支持本地whisper.cpp推理
+> 3. 新增测试脚本 test_local_whisper.py 用于验证本地配置
 
 #### 2025.01.25
 > 1. 支持通过环境变量配置恢复原始剪贴板内容，环境变量 `KEEP_ORIGINAL_CLIPBOARD` 默认为 `true` ，设置为 `false` 的时候不恢复
