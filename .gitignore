@@ -1,5 +1,7 @@
 # 忽略所有.env文件
 .env
+.env_*
+.env.*
 
 # 忽略所有.pyc文件
 *.pyc
