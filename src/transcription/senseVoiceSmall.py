@@ -7,6 +7,7 @@ import dotenv
 import httpx
 
 from src.llm.translate import TranslateProcessor
+from src.llm.kimi import KimiProcessor
 from ..utils.logger import logger
 
 dotenv.load_dotenv()
@@ -56,6 +57,9 @@ class SenseVoiceSmallProcessor:
         # self.optimize_result = os.getenv("OPTIMIZE_RESULT", "false").lower() == "true"
         self.timeout_seconds = self.DEFAULT_TIMEOUT
         self.translate_processor = TranslateProcessor()
+        self.kimi_processor = KimiProcessor()
+        # 是否启用Kimi润色功能
+        self.enable_kimi_polish = os.getenv("ENABLE_KIMI_POLISH", "true").lower() == "true"
 
     def _convert_traditional_to_simplified(self, text):
         """将繁体中文转换为简体中文"""
@@ -107,12 +111,9 @@ class SenseVoiceSmallProcessor:
                 result = self.translate_processor.translate(result)
             logger.info(f"识别结果: {result}")
             
-            # if self.add_symbol:
-            #     result = self.symbol.add_symbol(result)
-            #     logger.info(f"添加标点符号: {result}")
-            # if self.optimize_result:
-            #     result = self.symbol.optimize_result(result)
-            #     logger.info(f"优化结果: {result}")
+            # 如果启用Kimi润色功能，对结果进行润色
+            if self.enable_kimi_polish and result:
+                result = self.kimi_processor.polish_text(result)
 
             return result, None
 

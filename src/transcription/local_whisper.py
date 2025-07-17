@@ -9,6 +9,7 @@ from functools import wraps
 import dotenv
 
 from src.llm.translate import TranslateProcessor
+from src.llm.kimi import KimiProcessor
 from ..utils.logger import logger
 
 dotenv.load_dotenv()
@@ -70,6 +71,9 @@ class LocalWhisperProcessor:
         
         self.timeout_seconds = self.DEFAULT_TIMEOUT
         self.translate_processor = TranslateProcessor()
+        self.kimi_processor = KimiProcessor()
+        # 是否启用Kimi润色功能
+        self.enable_kimi_polish = os.getenv("ENABLE_KIMI_POLISH", "true").lower() == "true"
 
     def _save_audio_to_temp_file(self, audio_buffer):
         """将音频数据保存到临时WAV文件"""
@@ -198,6 +202,10 @@ class LocalWhisperProcessor:
             
             logger.info(f"本地处理成功 ({mode}), 耗时: {time.time() - start_time:.1f}秒")
             logger.info(f"转录结果: {result}")
+            
+            # 如果启用Kimi润色功能，对转录结果进行润色
+            if self.enable_kimi_polish and result:
+                result = self.kimi_processor.polish_text(result)
             
             # 如果是翻译模式，调用翻译服务
             if mode == "translations" and result:

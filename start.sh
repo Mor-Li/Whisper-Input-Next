@@ -8,7 +8,10 @@
 # 本地whisper.cpp配置（SERVICE_PLATFORM=local）
 export SERVICE_PLATFORM=local
 export WHISPER_CLI_PATH="/Users/limo/Documents/GithubRepo/whisper.cpp/build/bin/whisper-cli"
-export WHISPER_MODEL_PATH="models/ggml-large-v3.bin" 
+export WHISPER_MODEL_PATH="models/ggml-large-v3.bin"
+
+# Kimi润色功能配置
+export ENABLE_KIMI_POLISH=true 
 
 # 创建日志目录(如果不存在)
 if [ ! -d "logs" ]; then
@@ -56,6 +59,9 @@ tmux send-keys -t whisper-input "source venv/bin/activate" C-m
 tmux send-keys -t whisper-input "export SERVICE_PLATFORM=local" C-m
 tmux send-keys -t whisper-input "export WHISPER_CLI_PATH=\"/Users/limo/Documents/GithubRepo/whisper.cpp/build/bin/whisper-cli\"" C-m
 tmux send-keys -t whisper-input "export WHISPER_MODEL_PATH=\"models/ggml-large-v3.bin\"" C-m
+
+# 设置Kimi润色功能环境变量
+tmux send-keys -t whisper-input "export ENABLE_KIMI_POLISH=true" C-m
 
 # 开启代理（如需访问外网）
 # tmux send-keys -t whisper-input "export http_proxy=http://127.0.0.1:7890; export https_proxy=http://127.0.0.1:7890; export HTTP_PROXY=http://127.0.0.1:7890; export HTTPS_PROXY=http://127.0.0.1:7890" C-m

@@ -16,13 +16,19 @@ Whisper Input 是受到即友[FeiTTT](https://web.okjike.com/u/DB98BE7A-9DBB-473
 | 多语言语音转译 | Option 或者 Alt                 |
 | 中文翻译为英文 | Shift + Option 或者 Shift + Alt |
 
+## 新增功能
 
+### 🎯 Kimi AI 文本润色
+- **智能断句**：自动为语音识别结果添加适当的空格断句
+- **文本优化**：修正识别错误，提升文本可读性
+- **多平台支持**：支持本地 Whisper、GROQ、SiliconFlow 三种模式
+- **可控开关**：通过环境变量 `ENABLE_KIMI_POLISH` 控制启用/禁用
 
 查看[视频效果演示](https://img.erlich.fun/personal-blog/uPic/WhisperInputV02_compressed.mp4)
 
 
 
-**重点：Groq 和 SiliconFlow 都提供免费用量，并且都足够，无需付费，无需绑定信用卡**
+**重点：Groq、SiliconFlow 和 Kimi 都提供免费用量，并且都足够，无需付费，无需绑定信用卡**
 
 
 ## 使用方法
@@ -193,6 +199,24 @@ Whisper Input 是受到即友[FeiTTT](https://web.okjike.com/u/DB98BE7A-9DBB-473
 
 ![image-20250111140954085](https://img.erlich.fun/personal-blog/uPic/image-20250111140954085.png)
 
+## Kimi 文本润色配置
+
+Kimi 润色功能已默认启用，无需额外配置 API 密钥。如需禁用，可在启动前设置：
+
+```bash
+export ENABLE_KIMI_POLISH=false
+```
+
+### 润色功能测试
+
+运行测试脚本验证 Kimi API 是否正常工作：
+
+```bash
+python test_kimi_api.py
+```
+
+详细使用说明请参考：[KIMI_USAGE.md](./KIMI_USAGE.md)
+
 ## Tips
 
 由于这个程序需要一直在后台运行，所以最好找一个自己不会经常下意识关掉的终端或者终端里的 Tab 来运行，不然很容易会不小心关掉。
@@ -220,6 +244,12 @@ Whisper Input 是受到即友[FeiTTT](https://web.okjike.com/u/DB98BE7A-9DBB-473
 **如果你也有想法：** 欢迎 Fork 和 PR，如果你在使用当中遇到问题，欢迎提交 Issue。
 
 ## 更新日志
+
+#### 2025.07.18
+> 1. 新增 Kimi API 文本润色功能，支持智能断句和文本优化
+> 2. 集成到所有三个语音处理器（Local Whisper、GROQ Whisper、SiliconFlow）
+> 3. 通过环境变量 `ENABLE_KIMI_POLISH` 控制润色功能开关，默认启用
+> 4. 添加 Kimi API 测试脚本和详细使用文档
 
 #### 2025.07.06
 > 1. 新增本地 whisper.cpp 支持，完全本地化处理，无需网络连接

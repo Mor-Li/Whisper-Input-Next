@@ -9,6 +9,7 @@ from openai import OpenAI
 from opencc import OpenCC
 
 from ..llm.symbol import SymbolProcessor
+from ..llm.kimi import KimiProcessor
 from ..utils.logger import logger
 
 dotenv.load_dotenv()
@@ -70,6 +71,11 @@ class WhisperProcessor:
             self.DEFAULT_MODEL = "FunAudioLLM/SenseVoiceSmall"
         else:
             raise ValueError(f"未知的平台: {self.service_platform}")
+        
+        # 添加Kimi处理器
+        self.kimi_processor = KimiProcessor()
+        # 是否启用Kimi润色功能
+        self.enable_kimi_polish = os.getenv("ENABLE_KIMI_POLISH", "true").lower() == "true"
 
     def _convert_traditional_to_simplified(self, text):
         """将繁体中文转换为简体中文"""
@@ -119,13 +125,18 @@ class WhisperProcessor:
             result = self._convert_traditional_to_simplified(result)
             logger.info(f"识别结果: {result}")
             
-            # 仅在 groq API 时添加标点符号
-            if self.service_platform == "groq" and self.add_symbol:
-                result = self.symbol.add_symbol(result)
-                logger.info(f"添加标点符号: {result}")
-            if self.optimize_result:
-                result = self.symbol.optimize_result(result)
-                logger.info(f"优化结果: {result}")
+            # 使用Kimi润色功能替代原有的标点符号和优化功能
+            if self.enable_kimi_polish and result:
+                result = self.kimi_processor.polish_text(result)
+            else:
+                # 如果未启用Kimi润色，则使用原有的处理方式
+                # 仅在 groq API 时添加标点符号
+                if self.service_platform == "groq" and self.add_symbol:
+                    result = self.symbol.add_symbol(result)
+                    logger.info(f"添加标点符号: {result}")
+                if self.optimize_result:
+                    result = self.symbol.optimize_result(result)
+                    logger.info(f"优化结果: {result}")
 
             return result, None
             
