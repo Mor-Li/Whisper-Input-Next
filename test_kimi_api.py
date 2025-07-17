@@ -15,8 +15,18 @@ def test_kimi_api():
     """测试Kimi API"""
     print("=== 测试Kimi API ===")
     
-    # 创建Kimi处理器
-    kimi = KimiProcessor()
+    # 检查环境变量
+    if not os.getenv("KIMI_API_KEY"):
+        print("❌ 错误: 未设置 KIMI_API_KEY 环境变量")
+        print("请先设置: export KIMI_API_KEY=\"your_kimi_api_key_here\"")
+        return False
+    
+    try:
+        # 创建Kimi处理器
+        kimi = KimiProcessor()
+    except ValueError as e:
+        print(f"❌ 初始化错误: {e}")
+        return False
     
     # 测试文本（模拟语音识别结果）
     test_texts = [

@@ -14,9 +14,17 @@ Kimi文本润色功能已集成到Whisper-Input项目中，可以对语音识别
 - **API提供商**：Moonshot AI (Kimi)
 - **模型**：kimi-k2-0711-preview
 - **API基地址**：https://api.moonshot.cn/v1
-- **API密钥**：已预配置
+- **API密钥**：需要自行配置环境变量 `KIMI_API_KEY`
 
 ## 使用方法
+
+### 配置API密钥
+
+首先需要配置Kimi API密钥：
+
+```bash
+export KIMI_API_KEY="your_kimi_api_key_here"
+```
 
 ### 启用/禁用润色功能
 

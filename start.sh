@@ -11,7 +11,7 @@ export WHISPER_CLI_PATH="/Users/limo/Documents/GithubRepo/whisper.cpp/build/bin/
 export WHISPER_MODEL_PATH="models/ggml-large-v3.bin"
 
 # Kimi润色功能配置
-export ENABLE_KIMI_POLISH=true 
+export ENABLE_KIMI_POLISH=false
 
 # 创建日志目录(如果不存在)
 if [ ! -d "logs" ]; then

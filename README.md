@@ -201,7 +201,16 @@ Whisper Input 是受到即友[FeiTTT](https://web.okjike.com/u/DB98BE7A-9DBB-473
 
 ## Kimi 文本润色配置
 
-Kimi 润色功能已默认启用，无需额外配置 API 密钥。如需禁用，可在启动前设置：
+### 配置 API 密钥
+
+启用 Kimi 润色功能需要配置 API 密钥：
+
+```bash
+export KIMI_API_KEY="your_kimi_api_key_here"
+export ENABLE_KIMI_POLISH=true
+```
+
+如需禁用润色功能：
 
 ```bash
 export ENABLE_KIMI_POLISH=false

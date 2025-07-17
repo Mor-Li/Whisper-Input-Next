@@ -5,7 +5,9 @@ from ..utils.logger import logger
 
 class KimiProcessor:
     def __init__(self):
-        self.api_key = "sk-EZ9DAfJEAc5Dod9kWcQNgVzAWBDRpCO3EecVdOa09aRBTF66"
+        self.api_key = os.getenv("KIMI_API_KEY")
+        if not self.api_key:
+            raise ValueError("未设置 KIMI_API_KEY 环境变量")
         self.base_url = "https://api.moonshot.cn/v1"
         self.model = "kimi-k2-0711-preview"
         
