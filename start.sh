@@ -61,7 +61,7 @@ tmux send-keys -t whisper-input "export WHISPER_CLI_PATH=\"/Users/limo/Documents
 tmux send-keys -t whisper-input "export WHISPER_MODEL_PATH=\"models/ggml-large-v3.bin\"" C-m
 
 # 设置Kimi润色功能环境变量
-tmux send-keys -t whisper-input "export ENABLE_KIMI_POLISH=true" C-m
+tmux send-keys -t whisper-input "export ENABLE_KIMI_POLISH=false" C-m
 
 # 开启代理（如需访问外网）
 # tmux send-keys -t whisper-input "export http_proxy=http://127.0.0.1:7890; export https_proxy=http://127.0.0.1:7890; export HTTP_PROXY=http://127.0.0.1:7890; export HTTPS_PROXY=http://127.0.0.1:7890" C-m
