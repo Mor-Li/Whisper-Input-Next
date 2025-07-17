@@ -38,9 +38,10 @@ source venv/bin/activate
 # 关闭代理并安装依赖
 echo "关闭代理并安装依赖..."
 # proxy_off 
-pip install pip-tools python-dotenv
-pip-compile requirements.in
-pip install -r requirements.txt
+# 下面这三行不用每次都运行，只需要运行一次
+# pip install pip-tools python-dotenv
+# pip-compile requirements.in
+# pip install -r requirements.txt
 
 # 创建一个新的tmux会话
 tmux new-session -d -s whisper-input

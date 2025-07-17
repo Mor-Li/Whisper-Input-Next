@@ -9,16 +9,15 @@ import os
 class KeyboardManager:
     def __init__(self, on_record_start, on_record_stop, on_translate_start, on_translate_stop, on_reset_state):
         self.keyboard = Controller()
-        self.option_pressed = False
-        self.shift_pressed = False
+        self.ctrl_pressed = False  # 改为ctrl键状态
+        self.f_pressed = False  # F键状态
         self.temp_text_length = 0  # 用于跟踪临时文本的长度
         self.processing_text = None  # 用于跟踪正在处理的文本
         self.error_message = None  # 用于跟踪错误信息
         self.warning_message = None  # 用于跟踪警告信息
-        self.option_press_time = None  # 记录 Option 按下的时间戳
-        self.PRESS_DURATION_THRESHOLD = 0.5  # 按键持续时间阈值（秒）
-        self.is_checking_duration = False  # 用于控制定时器线程
-        self.has_triggered = False  # 用于防止重复触发
+        self.is_recording = False  # toggle模式的录音状态
+        self.last_key_time = 0  # 防止重复触发
+        self.KEY_DEBOUNCE_TIME = 0.3  # 按键防抖时间（秒）
         self._original_clipboard = None  # 保存原始剪贴板内容
         
         
@@ -55,20 +54,27 @@ class KeyboardManager:
         # 获取转录和翻译按钮
         transcriptions_button = os.getenv("TRANSCRIPTIONS_BUTTON")
         try:
-            self.transcriptions_button = Key[transcriptions_button]
+            # 字符键（如f）直接使用字符串，特殊键使用Key枚举
+            if len(transcriptions_button) == 1 and transcriptions_button.isalpha():
+                self.transcriptions_button = transcriptions_button
+            else:
+                self.transcriptions_button = Key[transcriptions_button]
             logger.info(f"配置到转录按钮：{transcriptions_button}")
         except KeyError:
             logger.error(f"无效的转录按钮配置：{transcriptions_button}")
 
         translations_button = os.getenv("TRANSLATIONS_BUTTON")
         try:
-            self.translations_button = Key[translations_button]
+            # 字符键（如f）直接使用字符串，特殊键使用Key枚举
+            if len(translations_button) == 1 and translations_button.isalpha():
+                self.translations_button = translations_button
+            else:
+                self.translations_button = Key[translations_button]
             logger.info(f"配置到翻译按钮(与转录按钮组合)：{translations_button}")
         except KeyError:
             logger.error(f"无效的翻译按钮配置：{translations_button}")
 
-        logger.info(f"按住 {transcriptions_button} + {translations_button} 键：实时语音转录")
-        logger.info(f"单独按住 {transcriptions_button} 键：不执行任何操作")
+        logger.info(f"按 {translations_button} + {transcriptions_button} 键：切换录音状态（按一下开始，再按一下结束）")
     
     @property
     def state(self):
@@ -239,60 +245,93 @@ class KeyboardManager:
         # 更新临时文本长度
         self.temp_text_length = len(text)
     
-    def start_duration_check(self):
-        """开始检查按键持续时间"""
-        if self.is_checking_duration:
+    def toggle_recording(self):
+        """切换录音状态"""
+        current_time = time.time()
+        
+        # 防抖处理
+        if current_time - self.last_key_time < self.KEY_DEBOUNCE_TIME:
             return
-
-        def check_duration():
-            while self.is_checking_duration and self.option_pressed:
-                current_time = time.time()
-                if (not self.has_triggered and 
-                    self.option_press_time and 
-                    (current_time - self.option_press_time) >= self.PRESS_DURATION_THRESHOLD):
-                    
-                    # 达到阈值时触发相应功能
-                    if self.option_pressed and self.shift_pressed and self.state.can_start_recording:
-                        self.state = InputState.RECORDING
-                        self.has_triggered = True
-                    # 移除单独按 Option 键触发录音的逻辑
-                
-                time.sleep(0.01)  # 短暂休眠以降低 CPU 使用率
-
-        self.is_checking_duration = True
-        import threading
-        threading.Thread(target=check_duration, daemon=True).start()
+        
+        self.last_key_time = current_time
+        
+        if not self.is_recording:
+            # 开始录音
+            if self.state.can_start_recording:
+                self.is_recording = True
+                self.state = InputState.RECORDING
+                logger.info("🎤 开始录音（toggle模式）")
+        else:
+            # 停止录音
+            self.is_recording = False
+            self.state = InputState.PROCESSING
+            logger.info("⏹️ 停止录音（toggle模式）")
 
     def on_press(self, key):
         """按键按下时的回调"""
         try:
-            if key == self.transcriptions_button: #Key.f8:  # Option 键按下
-                # 在开始任何操作前保存剪贴板内容
-                if self._original_clipboard is None:
-                    self._original_clipboard = pyperclip.paste()
-                    
-                self.option_pressed = True
-                self.option_press_time = time.time()
-                self.start_duration_check()
-            elif key == self.translations_button:
-                self.shift_pressed = True
+            # 检查转录按钮（字符键或特殊键）
+            is_transcription_key = False
+            if isinstance(self.transcriptions_button, str):
+                # 字符键
+                is_transcription_key = hasattr(key, 'char') and key.char == self.transcriptions_button
+            else:
+                # 特殊键
+                is_transcription_key = key == self.transcriptions_button
+                
+            # 检查翻译按钮（字符键或特殊键）
+            is_translation_key = False
+            if isinstance(self.translations_button, str):
+                # 字符键
+                is_translation_key = hasattr(key, 'char') and key.char == self.translations_button
+            else:
+                # 特殊键
+                is_translation_key = key == self.translations_button
+            
+            if is_transcription_key:  # F键
+                self.f_pressed = True
+                # 检查是否同时按下了ctrl+f
+                if self.ctrl_pressed and self.f_pressed:
+                    # 在开始任何操作前保存剪贴板内容
+                    if self._original_clipboard is None:
+                        self._original_clipboard = pyperclip.paste()
+                    self.toggle_recording()
+            elif is_translation_key:  # Ctrl键
+                self.ctrl_pressed = True
+                # 检查是否同时按下了ctrl+f
+                if self.ctrl_pressed and self.f_pressed:
+                    # 在开始任何操作前保存剪贴板内容
+                    if self._original_clipboard is None:
+                        self._original_clipboard = pyperclip.paste()
+                    self.toggle_recording()
         except AttributeError:
             pass
 
     def on_release(self, key):
         """按键释放时的回调"""
         try:
-            if key == self.transcriptions_button:# Key.f8:  # Option 键释放
-                self.option_pressed = False
-                self.option_press_time = None
-                self.is_checking_duration = False
+            # 检查转录按钮（字符键或特殊键）
+            is_transcription_key = False
+            if isinstance(self.transcriptions_button, str):
+                # 字符键
+                is_transcription_key = hasattr(key, 'char') and key.char == self.transcriptions_button
+            else:
+                # 特殊键
+                is_transcription_key = key == self.transcriptions_button
                 
-                if self.has_triggered:
-                    self.state = InputState.PROCESSING
-                    self.has_triggered = False
-            elif key == self.translations_button:#Key.f7:
-                self.shift_pressed = False
-                # 移除独立处理翻译键释放的逻辑
+            # 检查翻译按钮（字符键或特殊键）
+            is_translation_key = False
+            if isinstance(self.translations_button, str):
+                # 字符键
+                is_translation_key = hasattr(key, 'char') and key.char == self.translations_button
+            else:
+                # 特殊键
+                is_translation_key = key == self.translations_button
+                
+            if is_transcription_key:  # F键释放
+                self.f_pressed = False
+            elif is_translation_key:  # Ctrl键释放
+                self.ctrl_pressed = False
         except AttributeError:
             pass
     
@@ -310,11 +349,10 @@ class KeyboardManager:
         self._restore_clipboard()
         
         # 重置状态标志
-        self.option_pressed = False
-        self.shift_pressed = False
-        self.option_press_time = None
-        self.is_checking_duration = False
-        self.has_triggered = False
+        self.ctrl_pressed = False
+        self.f_pressed = False
+        self.is_recording = False
+        self.last_key_time = 0
         self.processing_text = None
         self.error_message = None
         self.warning_message = None
