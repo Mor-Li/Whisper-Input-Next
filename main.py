@@ -35,6 +35,8 @@ class VoiceAssistant:
             on_record_stop=self.stop_transcription_recording,
             on_translate_start=self.start_translation_recording,
             on_translate_stop=self.stop_translation_recording,
+            on_kimi_start=self.start_kimi_recording,
+            on_kimi_stop=self.stop_kimi_recording,
             on_reset_state=self.reset_state
         )
     
@@ -79,6 +81,39 @@ class VoiceAssistant:
                 )
             text, error = result if isinstance(result, tuple) else (result, None)
             self.keyboard_manager.type_text(text,error)
+        else:
+            logger.error("没有录音数据，状态将重置")
+            self.keyboard_manager.reset_state()
+    
+    def start_kimi_recording(self):
+        """开始录音（Kimi润色模式）"""
+        self.audio_recorder.start_recording()
+    
+    def stop_kimi_recording(self):
+        """停止录音并处理（Kimi润色模式）"""
+        audio = self.audio_recorder.stop_recording()
+        if audio == "TOO_SHORT":
+            logger.warning("录音时长太短，状态将重置")
+            self.keyboard_manager.reset_state()
+        elif audio:
+            # 临时启用Kimi润色功能
+            original_kimi_setting = getattr(self.audio_processor, 'enable_kimi_polish', False)
+            if hasattr(self.audio_processor, 'enable_kimi_polish'):
+                self.audio_processor.enable_kimi_polish = True
+            
+            result = self.audio_processor.process_audio(
+                audio,
+                mode="transcriptions",
+                prompt=""
+            )
+            
+            # 恢复原始设置
+            if hasattr(self.audio_processor, 'enable_kimi_polish'):
+                self.audio_processor.enable_kimi_polish = original_kimi_setting
+                
+            # 解构返回值
+            text, error = result if isinstance(result, tuple) else (result, None)
+            self.keyboard_manager.type_text(text, error)
         else:
             logger.error("没有录音数据，状态将重置")
             self.keyboard_manager.reset_state()

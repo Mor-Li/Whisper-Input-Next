@@ -13,16 +13,19 @@ Whisper Input 是受到即友[FeiTTT](https://web.okjike.com/u/DB98BE7A-9DBB-473
 
 | 功能           | 快捷键                          |
 | -------------- | ------------------------------- |
-| 多语言语音转译 | Option 或者 Alt                 |
+| 多语言语音转译 | Ctrl + F                        |
 | 中文翻译为英文 | Shift + Option 或者 Shift + Alt |
+| Kimi 润色模式  | Ctrl + Y                        |
 
 ## 新增功能
 
 ### 🎯 Kimi AI 文本润色
-- **智能断句**：自动为语音识别结果添加适当的空格断句
+- **智能断句**：自动为语音识别结果添加适当的标点符号
 - **文本优化**：修正识别错误，提升文本可读性
+- **双快捷键模式**：
+  - `Ctrl + F`：普通转录模式（不使用润色）
+  - `Ctrl + Y`：Kimi 润色模式（自动润色优化）
 - **多平台支持**：支持本地 Whisper、GROQ、SiliconFlow 三种模式
-- **可控开关**：通过环境变量 `ENABLE_KIMI_POLISH` 控制启用/禁用
 
 查看[视频效果演示](https://img.erlich.fun/personal-blog/uPic/WhisperInputV02_compressed.mp4)
 
@@ -257,8 +260,11 @@ python test_kimi_api.py
 #### 2025.07.18
 > 1. 新增 Kimi API 文本润色功能，支持智能断句和文本优化
 > 2. 集成到所有三个语音处理器（Local Whisper、GROQ Whisper、SiliconFlow）
-> 3. 通过环境变量 `ENABLE_KIMI_POLISH` 控制润色功能开关，默认启用
+> 3. **新增双快捷键模式**：
+>    - `Ctrl + F`：普通转录模式（不使用润色）
+>    - `Ctrl + Y`：Kimi 润色模式（自动润色优化）
 > 4. 添加 Kimi API 测试脚本和详细使用文档
+> 5. 优化用户体验，可根据需要选择是否使用润色功能
 
 #### 2025.07.06
 > 1. 新增本地 whisper.cpp 支持，完全本地化处理，无需网络连接

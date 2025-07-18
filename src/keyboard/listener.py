@@ -7,10 +7,11 @@ import os
 
 
 class KeyboardManager:
-    def __init__(self, on_record_start, on_record_stop, on_translate_start, on_translate_stop, on_reset_state):
+    def __init__(self, on_record_start, on_record_stop, on_translate_start, on_translate_stop, on_kimi_start, on_kimi_stop, on_reset_state):
         self.keyboard = Controller()
         self.ctrl_pressed = False  # 改为ctrl键状态
         self.f_pressed = False  # F键状态
+        self.y_pressed = False  # Y键状态
         self.temp_text_length = 0  # 用于跟踪临时文本的长度
         self.processing_text = None  # 用于跟踪正在处理的文本
         self.error_message = None  # 用于跟踪错误信息
@@ -26,6 +27,8 @@ class KeyboardManager:
         self.on_record_stop = on_record_stop
         self.on_translate_start = on_translate_start
         self.on_translate_stop = on_translate_stop
+        self.on_kimi_start = on_kimi_start
+        self.on_kimi_stop = on_kimi_stop
         self.on_reset_state = on_reset_state
 
         
@@ -35,7 +38,9 @@ class KeyboardManager:
             InputState.IDLE: "",
             InputState.RECORDING: "🎤 正在录音...",
             InputState.RECORDING_TRANSLATE: "🎤 正在录音 (翻译模式)",
+            InputState.RECORDING_KIMI: "🎤 正在录音 (Kimi润色模式)",
             InputState.PROCESSING: "🔄 正在转录...",
+            InputState.PROCESSING_KIMI: "🔄 正在转录和润色...",
             InputState.TRANSLATING: "🔄 正在翻译...",
             InputState.ERROR: lambda msg: f"{msg}",  # 错误消息使用函数动态生成
             InputState.WARNING: lambda msg: f"⚠️ {msg}"  # 警告消息使用函数动态生成
@@ -74,7 +79,9 @@ class KeyboardManager:
         except KeyError:
             logger.error(f"无效的翻译按钮配置：{translations_button}")
 
-        logger.info(f"按 {translations_button} + {transcriptions_button} 键：切换录音状态（按一下开始，再按一下结束）")
+        logger.info(f"按 {translations_button} + {transcriptions_button} 键：切换录音状态（普通模式）")
+        logger.info(f"按 {translations_button} + Y 键：切换录音状态（Kimi润色模式）")
+        logger.info(f"两种模式都是按一下开始，再按一下结束")
     
     @property
     def state(self):
@@ -102,12 +109,25 @@ class KeyboardManager:
                 self.temp_text_length = 0
                 self.type_temp_text(message)
                 self.on_translate_start()
+                
+            elif new_state == InputState.RECORDING_KIMI:
+                # Kimi润色录音状态
+                self.temp_text_length = 0
+                self.type_temp_text(message)
+                self.on_kimi_start()
 
             elif new_state == InputState.PROCESSING:
                 self._delete_previous_text()
                 self.type_temp_text(message)
                 self.processing_text = message
                 self.on_record_stop()
+                
+            elif new_state == InputState.PROCESSING_KIMI:
+                # Kimi润色处理状态
+                self._delete_previous_text()
+                self.type_temp_text(message)
+                self.processing_text = message
+                self.on_kimi_stop()
 
             elif new_state == InputState.TRANSLATING:
                 # 翻译状态
@@ -266,6 +286,28 @@ class KeyboardManager:
             self.is_recording = False
             self.state = InputState.PROCESSING
             logger.info("⏹️ 停止录音（toggle模式）")
+    
+    def toggle_kimi_recording(self):
+        """切换Kimi润色录音状态"""
+        current_time = time.time()
+        
+        # 防抖处理
+        if current_time - self.last_key_time < self.KEY_DEBOUNCE_TIME:
+            return
+        
+        self.last_key_time = current_time
+        
+        if not self.is_recording:
+            # 开始录音
+            if self.state.can_start_recording:
+                self.is_recording = True
+                self.state = InputState.RECORDING_KIMI
+                logger.info("🎤 开始录音（Kimi润色模式）")
+        else:
+            # 停止录音
+            self.is_recording = False
+            self.state = InputState.PROCESSING_KIMI
+            logger.info("⏹️ 停止录音（Kimi润色模式）")
 
     def on_press(self, key):
         """按键按下时的回调"""
@@ -288,7 +330,15 @@ class KeyboardManager:
                 # 特殊键
                 is_translation_key = key == self.translations_button
             
-            if is_transcription_key:  # F键
+            # 检查Y键（用于Kimi润色模式）
+            if hasattr(key, 'char') and key.char == 'y':
+                self.y_pressed = True
+                # 检查是否同时按下了ctrl+y（Kimi润色模式）
+                if self.ctrl_pressed and self.y_pressed:
+                    if self._original_clipboard is None:
+                        self._original_clipboard = pyperclip.paste()
+                    self.toggle_kimi_recording()
+            elif is_transcription_key:  # F键
                 self.f_pressed = True
                 # 检查是否同时按下了ctrl+f
                 if self.ctrl_pressed and self.f_pressed:
@@ -298,12 +348,16 @@ class KeyboardManager:
                     self.toggle_recording()
             elif is_translation_key:  # Ctrl键
                 self.ctrl_pressed = True
-                # 检查是否同时按下了ctrl+f
+                # 检查是否同时按下了ctrl+f（普通录音模式）
                 if self.ctrl_pressed and self.f_pressed:
-                    # 在开始任何操作前保存剪贴板内容
                     if self._original_clipboard is None:
                         self._original_clipboard = pyperclip.paste()
                     self.toggle_recording()
+                # 检查是否同时按下了ctrl+y（Kimi润色模式）
+                elif self.ctrl_pressed and self.y_pressed:
+                    if self._original_clipboard is None:
+                        self._original_clipboard = pyperclip.paste()
+                    self.toggle_kimi_recording()
         except AttributeError:
             pass
 
@@ -328,7 +382,10 @@ class KeyboardManager:
                 # 特殊键
                 is_translation_key = key == self.translations_button
                 
-            if is_transcription_key:  # F键释放
+            # 检查Y键释放
+            if hasattr(key, 'char') and key.char == 'y':
+                self.y_pressed = False
+            elif is_transcription_key:  # F键释放
                 self.f_pressed = False
             elif is_translation_key:  # Ctrl键释放
                 self.ctrl_pressed = False
