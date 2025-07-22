@@ -9,7 +9,7 @@ from pathlib import Path
 
 # 设置环境变量
 os.environ['SERVICE_PLATFORM'] = 'local'
-os.environ['WHISPER_CLI_PATH'] = '/Users/limo/Documents/GithubRepo/whisper.cpp/build/bin/whisper-cli'
+os.environ['WHISPER_CLI_PATH'] = '/Users/moonshot/Documents/whisper.cpp/build/bin/whisper-cli'
 os.environ['WHISPER_MODEL_PATH'] = 'models/ggml-large-v3.bin'
 
 # 添加src目录到Python路径
@@ -20,11 +20,11 @@ from src.transcription.local_whisper import LocalWhisperProcessor
 def test_with_existing_audio():
     """使用现有的测试音频文件进行测试"""
     # 使用whisper.cpp自带的测试音频文件
-    audio_file = "/Users/limo/Documents/GithubRepo/whisper.cpp/tests/test_zh-CN.wav"
+    audio_file = "/Users/moonshot/Documents/whisper.cpp/samples/jfk.wav"
     
     if not os.path.exists(audio_file):
         print(f"❌ 测试音频文件不存在: {audio_file}")
-        print("请确保whisper.cpp目录下有tests/test_zh-CN.wav文件")
+        print("请确保whisper.cpp目录下有samples/jfk.wav文件")
         return False
     
     try:

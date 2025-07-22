@@ -7,7 +7,7 @@
 # 2025-07-06 日，添加了本地whisper.cpp的配置 local 
 # 本地whisper.cpp配置（SERVICE_PLATFORM=local）
 export SERVICE_PLATFORM=local
-export WHISPER_CLI_PATH="/Users/limo/Documents/GithubRepo/whisper.cpp/build/bin/whisper-cli"
+export WHISPER_CLI_PATH="/Users/moonshot/Documents/whisper.cpp/build/bin/whisper-cli"
 export WHISPER_MODEL_PATH="models/ggml-large-v3.bin"
 
 # Kimi润色功能配置
@@ -57,7 +57,7 @@ tmux send-keys -t whisper-input "source venv/bin/activate" C-m
 
 # 设置本地whisper.cpp环境变量
 tmux send-keys -t whisper-input "export SERVICE_PLATFORM=local" C-m
-tmux send-keys -t whisper-input "export WHISPER_CLI_PATH=\"/Users/limo/Documents/GithubRepo/whisper.cpp/build/bin/whisper-cli\"" C-m
+tmux send-keys -t whisper-input "export WHISPER_CLI_PATH=\"/Users/moonshot/Documents/whisper.cpp/build/bin/whisper-cli\"" C-m
 tmux send-keys -t whisper-input "export WHISPER_MODEL_PATH=\"models/ggml-large-v3.bin\"" C-m
 
 # 设置Kimi润色功能环境变量
