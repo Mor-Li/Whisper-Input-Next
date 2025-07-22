@@ -29,14 +29,14 @@ if tmux has-session -t whisper-input 2>/dev/null; then
 fi
 
 # 创建虚拟环境(如果不存在)
-if [ ! -d "venv" ]; then
+if [ ! -d "whisper-env" ]; then
   echo "创建虚拟环境..."
-  python -m venv venv
+  python3 -m venv whisper-env
 fi
 
 # 激活虚拟环境并安装依赖
 echo "激活虚拟环境并安装依赖..."
-source venv/bin/activate
+source whisper-env/bin/activate
 
 # 关闭代理并安装依赖
 echo "关闭代理并安装依赖..."
@@ -53,7 +53,7 @@ tmux new-session -d -s whisper-input
 tmux send-keys -t whisper-input "cd $(pwd)" C-m
 
 # 激活虚拟环境
-tmux send-keys -t whisper-input "source venv/bin/activate" C-m
+tmux send-keys -t whisper-input "source whisper-env/bin/activate" C-m
 
 # 设置本地whisper.cpp环境变量
 tmux send-keys -t whisper-input "export SERVICE_PLATFORM=local" C-m

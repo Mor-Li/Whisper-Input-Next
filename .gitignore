@@ -33,3 +33,4 @@ build/
 
 # 忽略 dist
 dist/
+whisper-env
