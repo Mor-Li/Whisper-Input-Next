@@ -74,8 +74,8 @@ class WhisperProcessor:
         
         # 添加Kimi处理器
         self.kimi_processor = KimiProcessor()
-        # 是否启用Kimi润色功能
-        self.enable_kimi_polish = os.getenv("ENABLE_KIMI_POLISH", "true").lower() == "true"
+        # 是否启用Kimi润色功能（默认关闭，通过快捷键动态控制）
+        self.enable_kimi_polish = os.getenv("ENABLE_KIMI_POLISH", "false").lower() == "true"
 
     def _convert_traditional_to_simplified(self, text):
         """将繁体中文转换为简体中文"""

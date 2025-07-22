@@ -10,9 +10,6 @@ export SERVICE_PLATFORM=local
 export WHISPER_CLI_PATH="/Users/limo/Documents/GithubRepo/whisper.cpp/build/bin/whisper-cli"
 export WHISPER_MODEL_PATH="models/ggml-large-v3.bin"
 
-# Kimi润色功能配置
-export ENABLE_KIMI_POLISH=false
-
 # 创建日志目录(如果不存在)
 if [ ! -d "logs" ]; then
   mkdir -p logs
@@ -35,11 +32,11 @@ if [ ! -d "venv" ]; then
 fi
 
 # 激活虚拟环境并安装依赖
-echo "激活虚拟环境并安装依赖..."
-source venv/bin/activate
+# echo "激活虚拟环境并安装依赖..."
+# source venv/bin/activate
 
 # 关闭代理并安装依赖
-echo "关闭代理并安装依赖..."
+# echo "关闭代理并安装依赖..."
 # proxy_off 
 # 下面这三行不用每次都运行，只需要运行一次
 # pip install pip-tools python-dotenv
@@ -60,11 +57,10 @@ tmux send-keys -t whisper-input "export SERVICE_PLATFORM=local" C-m
 tmux send-keys -t whisper-input "export WHISPER_CLI_PATH=\"/Users/limo/Documents/GithubRepo/whisper.cpp/build/bin/whisper-cli\"" C-m
 tmux send-keys -t whisper-input "export WHISPER_MODEL_PATH=\"models/ggml-large-v3.bin\"" C-m
 
-# 设置Kimi润色功能环境变量
-tmux send-keys -t whisper-input "export ENABLE_KIMI_POLISH=false" C-m
-
-# 开启代理（如需访问外网）
-# tmux send-keys -t whisper-input "export http_proxy=http://127.0.0.1:7890; export https_proxy=http://127.0.0.1:7890; export HTTP_PROXY=http://127.0.0.1:7890; export HTTPS_PROXY=http://127.0.0.1:7890" C-m
+# Kimi润色功能通过快捷键控制：
+# - Ctrl + F：普通转录模式（不润色）
+# - Ctrl + Y：Kimi润色模式（自动润色）
+# KIMI_API_KEY 已在 .env 文件中配置，load_dotenv() 会自动加载
 
 # 启动应用程序并同时将输出保存到日志文件
 tmux send-keys -t whisper-input "python main.py 2>&1 | tee $LOG_FILE" C-m

@@ -72,8 +72,8 @@ class LocalWhisperProcessor:
         self.timeout_seconds = self.DEFAULT_TIMEOUT
         self.translate_processor = TranslateProcessor()
         self.kimi_processor = KimiProcessor()
-        # 是否启用Kimi润色功能
-        self.enable_kimi_polish = os.getenv("ENABLE_KIMI_POLISH", "true").lower() == "true"
+        # 是否启用Kimi润色功能（默认关闭，通过快捷键动态控制）
+        self.enable_kimi_polish = os.getenv("ENABLE_KIMI_POLISH", "false").lower() == "true"
 
     def _save_audio_to_temp_file(self, audio_buffer):
         """将音频数据保存到临时WAV文件"""
