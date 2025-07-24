@@ -5,6 +5,8 @@ import tempfile
 import threading
 import time
 from functools import wraps
+import glob
+from datetime import datetime
 
 import dotenv
 
@@ -45,7 +47,7 @@ def timeout_decorator(seconds):
 
 class LocalWhisperProcessor:
     # 类级别的配置参数
-    DEFAULT_TIMEOUT = 30  # 本地处理可能需要更长时间
+    DEFAULT_TIMEOUT = 180  # 修改为180秒（3分钟）
     
     def __init__(self):
         # 从环境变量获取whisper.cpp路径和模型路径
@@ -74,6 +76,62 @@ class LocalWhisperProcessor:
         self.kimi_processor = KimiProcessor()
         # 是否启用Kimi润色功能（默认关闭，通过快捷键动态控制）
         self.enable_kimi_polish = os.getenv("ENABLE_KIMI_POLISH", "false").lower() == "true"
+        
+        # 创建音频存档目录
+        self.audio_archive_dir = "audio_archive"
+        self._ensure_archive_directory()
+
+    def _ensure_archive_directory(self):
+        """确保音频存档目录存在"""
+        if not os.path.exists(self.audio_archive_dir):
+            os.makedirs(self.audio_archive_dir)
+            logger.info(f"创建音频存档目录: {self.audio_archive_dir}")
+
+    def _save_audio_to_archive(self, audio_buffer):
+        """将音频数据保存到存档目录，并管理文件数量"""
+        # 生成带时间戳的文件名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        archive_filename = f"recording_{timestamp}.wav"
+        archive_path = os.path.join(self.audio_archive_dir, archive_filename)
+        
+        try:
+            # 重置缓冲区位置到开始
+            audio_buffer.seek(0)
+            with open(archive_path, 'wb') as f:
+                f.write(audio_buffer.read())
+            
+            logger.info(f"音频文件已保存到存档: {archive_path}")
+            
+            # 管理文件数量，只保留最新的5个文件
+            self._manage_archive_files()
+            
+            return archive_path
+        except Exception as e:
+            logger.error(f"保存音频文件到存档失败: {e}")
+            return None
+
+    def _manage_archive_files(self):
+        """管理存档文件，只保留最新的5个WAV文件"""
+        try:
+            # 获取所有WAV文件
+            wav_files = glob.glob(os.path.join(self.audio_archive_dir, "recording_*.wav"))
+            
+            # 按修改时间排序（最新的在前）
+            wav_files.sort(key=os.path.getmtime, reverse=True)
+            
+            # 如果文件数量超过5个，删除多余的文件
+            if len(wav_files) > 5:
+                files_to_delete = wav_files[5:]  # 保留前5个，删除其余的
+                for file_path in files_to_delete:
+                    try:
+                        os.unlink(file_path)
+                        logger.info(f"删除旧的录音文件: {os.path.basename(file_path)}")
+                    except Exception as e:
+                        logger.warning(f"删除文件失败 {file_path}: {e}")
+                        
+                logger.info(f"存档管理完成，保留了最新的5个录音文件")
+        except Exception as e:
+            logger.error(f"管理存档文件时出错: {e}")
 
     def _save_audio_to_temp_file(self, audio_buffer):
         """将音频数据保存到临时WAV文件"""
@@ -87,7 +145,7 @@ class LocalWhisperProcessor:
         finally:
             temp_file.close()
 
-    @timeout_decorator(30)
+    @timeout_decorator(180)  # 修改为180秒（3分钟）
     def _call_whisper_cpp(self, wav_file):
         """调用本地whisper.cpp进行转录"""
         # 创建临时文件作为输出前缀
@@ -194,7 +252,10 @@ class LocalWhisperProcessor:
             
             logger.info(f"正在使用本地 whisper.cpp 处理音频... (模式: {mode})")
             
-            # 保存音频到临时文件
+            # 首先保存音频到存档（保留原始录音）
+            archive_path = self._save_audio_to_archive(audio_buffer)
+            
+            # 保存音频到临时文件用于处理
             wav_file = self._save_audio_to_temp_file(audio_buffer)
             
             # 调用whisper.cpp进行转录
@@ -224,10 +285,11 @@ class LocalWhisperProcessor:
             logger.error(f"本地音频处理错误: {str(e)}", exc_info=True)
             return None, error_msg
         finally:
-            # 清理临时WAV文件
+            # 清理临时WAV文件（注意：这里只删除用于处理的临时文件，不删除存档文件）
             if wav_file and os.path.exists(wav_file):
                 try:
                     os.unlink(wav_file)
+                    logger.debug(f"清理临时处理文件: {wav_file}")
                 except Exception as e:
                     logger.warning(f"清理临时WAV文件失败: {e}")
             

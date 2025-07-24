@@ -33,3 +33,7 @@ build/
 
 # 忽略 dist
 dist/
+whisper-env
+
+# 忽略音频存档目录
+audio_archive/

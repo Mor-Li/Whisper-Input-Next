@@ -2,6 +2,8 @@ import os
 import threading
 import time
 from functools import wraps
+import glob
+from datetime import datetime
 
 import dotenv
 import httpx
@@ -76,6 +78,63 @@ class WhisperProcessor:
         self.kimi_processor = KimiProcessor()
         # 是否启用Kimi润色功能（默认关闭，通过快捷键动态控制）
         self.enable_kimi_polish = os.getenv("ENABLE_KIMI_POLISH", "false").lower() == "true"
+        
+        # 创建音频存档目录
+        self.audio_archive_dir = "audio_archive"
+        self._ensure_archive_directory()
+
+    def _ensure_archive_directory(self):
+        """确保音频存档目录存在"""
+        if not os.path.exists(self.audio_archive_dir):
+            os.makedirs(self.audio_archive_dir)
+            logger.info(f"创建音频存档目录: {self.audio_archive_dir}")
+
+    def _save_audio_to_archive(self, audio_buffer):
+        """将音频数据保存到存档目录，并管理文件数量"""
+        # 生成带时间戳的文件名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        archive_filename = f"recording_{timestamp}.wav"
+        archive_path = os.path.join(self.audio_archive_dir, archive_filename)
+        
+        try:
+            # 重置缓冲区位置到开始
+            audio_buffer.seek(0)
+            with open(archive_path, 'wb') as f:
+                f.write(audio_buffer.read())
+            
+            logger.info(f"音频文件已保存到存档: {archive_path}")
+            
+            # 管理文件数量，只保留最新的5个文件
+            self._manage_archive_files()
+            
+            return archive_path
+        except Exception as e:
+            logger.error(f"保存音频文件到存档失败: {e}")
+            return None
+
+    def _manage_archive_files(self):
+        """管理存档文件，只保留最新的5个WAV文件"""
+        try:
+            # 获取所有WAV文件
+            wav_files = glob.glob(os.path.join(self.audio_archive_dir, "recording_*.wav"))
+            
+            # 按修改时间排序（最新的在前）
+            wav_files.sort(key=os.path.getmtime, reverse=True)
+            
+            # 如果文件数量超过5个，删除多余的文件
+            if len(wav_files) > 5:
+                files_to_delete = wav_files[5:]  # 保留前5个，删除其余的
+                for file_path in files_to_delete:
+                    try:
+                        os.unlink(file_path)
+                        logger.info(f"删除旧的录音文件: {os.path.basename(file_path)}")
+                    except Exception as e:
+                        logger.warning(f"删除文件失败 {file_path}: {e}")
+                        
+                logger.info(f"存档管理完成，保留了最新的5个录音文件")
+        except Exception as e:
+            logger.error(f"管理存档文件时出错: {e}")
+
 
     def _convert_traditional_to_simplified(self, text):
         """将繁体中文转换为简体中文"""
@@ -117,6 +176,9 @@ class WhisperProcessor:
         """
         try:
             start_time = time.time()
+
+            # 首先保存音频到存档（保留原始录音）
+            archive_path = self._save_audio_to_archive(audio_buffer)
 
             logger.info(f"正在调用 Whisper API... (模式: {mode})")
             result = self._call_whisper_api(mode, audio_buffer, prompt)
