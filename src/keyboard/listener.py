@@ -36,12 +36,12 @@ class KeyboardManager:
         self._state = InputState.IDLE
         self._state_messages = {
             InputState.IDLE: "",
-            InputState.RECORDING: "🎤 正在录音...",
-            InputState.RECORDING_TRANSLATE: "🎤 正在录音 (翻译模式)",
-            InputState.RECORDING_KIMI: "🎤 正在录音 (Kimi润色模式)",
-            InputState.PROCESSING: "🔄 正在转录...",
-            InputState.PROCESSING_KIMI: "🔄 正在转录和润色...",
-            InputState.TRANSLATING: "🔄 正在翻译...",
+            InputState.RECORDING: "🎤",
+            InputState.RECORDING_TRANSLATE: "🎤",
+            InputState.RECORDING_KIMI: "🎤",
+            InputState.PROCESSING: "🔄",
+            InputState.PROCESSING_KIMI: "🔄",
+            InputState.TRANSLATING: "🔄",
             InputState.ERROR: lambda msg: f"{msg}",  # 错误消息使用函数动态生成
             InputState.WARNING: lambda msg: f"⚠️ {msg}"  # 警告消息使用函数动态生成
         }
@@ -215,15 +215,10 @@ class KeyboardManager:
             logger.info("正在输入转录文本...")
             self._delete_previous_text()
             
-            # 先输入文本和完成标记
-            self.type_temp_text(text+" ✅")
-            
+            # 直接输入文本，不添加任何标记
+            self.type_temp_text(text)
             # 等待一小段时间确保文本已输入
             time.sleep(0.5)
-            
-            # 删除完成标记（2个字符：空格和✅）
-            self.temp_text_length = 2
-            self._delete_previous_text()
             
             # 将转录结果复制到剪贴板
             if os.getenv("KEEP_ORIGINAL_CLIPBOARD", "true").lower() != "true":
