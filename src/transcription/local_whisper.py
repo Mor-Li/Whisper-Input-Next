@@ -51,7 +51,7 @@ class LocalWhisperProcessor:
     
     def __init__(self):
         # 从环境变量获取whisper.cpp路径和模型路径
-        self.whisper_cli_path = os.getenv("WHISPER_CLI_PATH", "/Users/limo/Documents/GithubRepo/whisper.cpp/build/bin/whisper-cli")
+        self.whisper_cli_path = os.getenv("WHISPER_CLI_PATH", "/path/to/whisper.cpp/build/bin/whisper-cli")
         self.model_path = os.getenv("WHISPER_MODEL_PATH", "models/ggml-large-v3.bin")
         
         # 检查whisper.cpp可执行文件是否存在

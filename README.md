@@ -1,7 +1,7 @@
 # Whisper-Input - Enhanced Voice Transcription Tool
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](./VERSION)
-[![Python](https://img.shields.io/badge/python-3.8+-green.svg)](https://www.python.org/)
+[![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)](./VERSION)
+[![Python](https://img.shields.io/badge/python-3.12+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 一个基于语音转录的智能输入工具，支持多种转录服务和高质量的语音识别功能。
@@ -28,9 +28,10 @@
 ## 📦 快速开始
 
 ### 环境要求
-- Python 3.8+
+- Python 3.12+
 - macOS/Linux (Windows支持开发中)
 - 网络连接 (仅云端服务需要)
+- **本地whisper.cpp** (使用本地转录功能时需要)
 
 ### 安装步骤
 
@@ -52,19 +53,51 @@ source venv/bin/activate  # macOS/Linux
 pip install -r requirements.txt
 ```
 
-4. **配置环境变量**
+4. **安装本地whisper.cpp (可选，使用本地转录时需要)**
 ```bash
-cp .env.example .env
-# 编辑 .env 文件，添加你的API密钥
+# 克隆whisper.cpp仓库
+git clone https://github.com/ggerganov/whisper.cpp.git
+cd whisper.cpp
+
+# 编译 (macOS/Linux)
+make
+
+# 下载模型文件 (推荐large-v3)
+bash ./models/download-ggml-model.sh large-v3
+
+# 记录whisper-cli路径，稍后配置到.env文件
+echo "Whisper CLI 路径: $(pwd)/build/bin/whisper-cli"
+cd ..
 ```
 
-5. **运行程序**
+5. **配置环境变量**
+```bash
+cp .env.example .env
+# 编辑 .env 文件，配置必要参数:
+# - OFFICIAL_OPENAI_API_KEY: OpenAI API密钥 (必需)
+# - WHISPER_CLI_PATH: whisper.cpp可执行文件路径 (使用本地转录时必需)
+# - WHISPER_MODEL_PATH: whisper模型文件路径 (使用本地转录时必需)
+```
+
+6. **运行程序**
 ```bash
 python main.py
 # 或使用启动脚本
 chmod +x start.sh
 ./start.sh
 ```
+
+### ⚠️ 重要说明
+
+**必需配置项：**
+- `OFFICIAL_OPENAI_API_KEY`: OpenAI GPT-4o transcribe API密钥
+- `WHISPER_CLI_PATH`: 本地whisper.cpp可执行文件绝对路径
+- `WHISPER_MODEL_PATH`: whisper模型文件路径 (相对于whisper.cpp根目录)
+
+**whisper.cpp安装指南：**
+1. 从 [whisper.cpp仓库](https://github.com/ggerganov/whisper.cpp) 克隆并编译
+2. 下载large-v3模型: `bash ./models/download-ggml-model.sh large-v3`
+3. 在.env中配置正确的路径
 
 ## ⚙️ 配置说明
 
@@ -78,6 +111,10 @@ SERVICE_PLATFORM=openai&local  # 我们主要维护的配置
 
 # OpenAI 配置 (必需)
 OFFICIAL_OPENAI_API_KEY=sk-proj-xxx
+
+# 本地whisper.cpp配置 (使用本地转录时必需)
+WHISPER_CLI_PATH=/path/to/whisper.cpp/build/bin/whisper-cli
+WHISPER_MODEL_PATH=models/ggml-large-v3.bin
 
 # 键盘快捷键配置
 TRANSCRIPTIONS_BUTTON=f
@@ -104,10 +141,11 @@ OPTIMIZE_RESULT=false
 
 ## 📚 功能文档
 
-- [🔊 音频存档功能](./docs/AUDIO_ARCHIVE_FEATURE.md)
-- [🤖 Kimi润色集成](./docs/KIMI_USAGE.md) 
-- [📊 状态显示优化](./docs/STATUS_DISPLAY_IMPROVEMENTS.md)
-- [🔄 分支差异对比](./docs/BRANCH_DIFFERENCES.md)
+- [🔊 音频存档功能](./docs/[V3.0.0]_AUDIO_ARCHIVE_FEATURE.md) - *v3.0.0引入*
+- [🤖 Kimi润色集成](./docs/[DEPRECATED]_KIMI_USAGE.md) - *已废弃*
+- [📊 状态显示优化](./docs/[V3.0.0]_STATUS_DISPLAY_IMPROVEMENTS.md) - *v3.0.0引入*
+- [🔄 分支差异对比](./docs/[V3.0.0]_BRANCH_DIFFERENCES.md) - *v3.0.0引入*
+- [📋 版本控制文档](./docs/[V3.0.0]_VERSION_CONTROL.md) - *v3.0.0建立*
 
 ## 🛠️ 开发状态
 
@@ -121,16 +159,10 @@ OPTIMIZE_RESULT=false
 - [x] 项目文档完善
 
 ### 🚧 正在开发  
-- [ ] 配置界面开发
-- [ ] Windows平台适配
-- [ ] 单元测试完善
-- [ ] 性能监控系统
+*当前无正在开发的功能*
 
 ### 📋 计划功能
-- [ ] 更多云端服务支持
-- [ ] 语音命令控制
-- [ ] 批量音频处理
-- [ ] Web界面
+*当前无计划功能*
 
 ## 🤝 贡献指南
 

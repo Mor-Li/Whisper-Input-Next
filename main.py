@@ -14,7 +14,7 @@ from src.transcription.senseVoiceSmall import SenseVoiceSmallProcessor
 from src.transcription.local_whisper import LocalWhisperProcessor
 
 # 版本信息
-__version__ = "2.0.0"
+__version__ = "3.0.0"
 __author__ = "Mor-Li"
 __description__ = "Enhanced Voice Transcription Tool with OpenAI GPT-4 Transcribe"
 
@@ -163,8 +163,8 @@ def main():
     
     # 支持 openai&local 双平台配置（我们的默认维护配置）
     if service_platform == "openai&local" or service_platform == "openai":
-        # 使用双处理器架构：OpenAI + 本地whisper
-        pass  # 后面会创建双处理器
+        # 双处理器架构：本身就有OpenAI + 本地whisper两个处理器
+        pass  # 直接使用下面的双处理器创建逻辑
     elif service_platform == "groq":
         audio_processor = WhisperProcessor()  # 使用 GROQ Whisper
     elif service_platform == "siliconflow":
@@ -175,7 +175,7 @@ def main():
         raise ValueError(f"无效的服务平台: {service_platform}, 支持的平台: openai&local (推荐), openai, groq, siliconflow, local")
     
     try:
-        # 创建 OpenAI 和本地 Whisper 处理器（双处理器架构）
+        # 创建双处理器架构：OpenAI 和本地 Whisper 处理器
         original_platform = os.environ.get("SERVICE_PLATFORM")
         
         # 创建 OpenAI 处理器
