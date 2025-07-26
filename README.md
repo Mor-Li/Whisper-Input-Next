@@ -73,15 +73,11 @@ chmod +x start.sh
 在 `.env` 文件中配置以下参数：
 
 ```bash
-# 服务平台选择
-SERVICE_PLATFORM=openai  # openai/groq/siliconflow/local
+# 服务平台选择 (推荐使用我们维护的双平台配置)
+SERVICE_PLATFORM=openai&local  # 我们主要维护的配置
 
-# OpenAI 配置 (推荐)
+# OpenAI 配置 (必需)
 OFFICIAL_OPENAI_API_KEY=sk-proj-xxx
-
-# GROQ 配置
-GROQ_API_KEY=gsk_xxx
-GROQ_BASE_URL=https://api.groq.com/openai/v1
 
 # 键盘快捷键配置
 TRANSCRIPTIONS_BUTTON=f
@@ -93,6 +89,11 @@ CONVERT_TO_SIMPLIFIED=false
 ADD_SYMBOL=false
 OPTIMIZE_RESULT=false
 ```
+
+**重要说明**: 
+- 本项目主要维护 `SERVICE_PLATFORM=openai&local` 配置
+- 这是我们推荐和测试最充分的配置
+- 其他单平台配置（groq、siliconflow等）仅作兼容性保留
 
 ### 快捷键说明
 

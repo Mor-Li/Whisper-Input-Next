@@ -156,8 +156,11 @@ class VoiceAssistant:
 def main():
     # 判断是 OpenAI GPT-4 transcribe 还是 GROQ Whisper 还是 SiliconFlow 还是本地whisper.cpp
     service_platform = os.getenv("SERVICE_PLATFORM", "siliconflow")
-    if service_platform == "openai":
-        audio_processor = WhisperProcessor()  # 使用 OpenAI GPT-4 transcribe
+    
+    # 支持 openai&local 双平台配置（我们的默认维护配置）
+    if service_platform == "openai&local" or service_platform == "openai":
+        # 使用双处理器架构：OpenAI + 本地whisper
+        pass  # 后面会创建双处理器
     elif service_platform == "groq":
         audio_processor = WhisperProcessor()  # 使用 GROQ Whisper
     elif service_platform == "siliconflow":
@@ -165,9 +168,10 @@ def main():
     elif service_platform == "local":
         audio_processor = LocalWhisperProcessor()
     else:
-        raise ValueError(f"无效的服务平台: {service_platform}, 支持的平台: openai, groq, siliconflow, local")
+        raise ValueError(f"无效的服务平台: {service_platform}, 支持的平台: openai&local (推荐), openai, groq, siliconflow, local")
+    
     try:
-        # 创建 OpenAI 和本地 Whisper 处理器
+        # 创建 OpenAI 和本地 Whisper 处理器（双处理器架构）
         original_platform = os.environ.get("SERVICE_PLATFORM")
         
         # 创建 OpenAI 处理器
