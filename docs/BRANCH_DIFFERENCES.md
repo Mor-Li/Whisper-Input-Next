@@ -1,0 +1,112 @@
+# 分支差异对比文档
+
+## 项目概述
+本项目基于 [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/Whisper-Input) 进行开发和维护。原项目已停止维护数月，我们在其基础上添加了大量新功能和改进。
+
+## 与上游仓库 (upstream/main) 的主要差异
+
+### 文件变更统计
+- **15个文件** 被修改
+- **新增** 1,228 行代码
+- **删除** 237 行代码
+
+### 主要功能改进
+
+#### 1. 新增OpenAI GPT-4 Transcribe支持
+- 添加官方OpenAI API集成
+- 支持 `gpt-4o-transcribe` 高质量转录
+- 180秒超时时间和失败重试机制
+- 自动标点符号，无需后处理
+
+#### 2. 键盘快捷键重新设计
+- **Ctrl+F**: OpenAI GPT-4 transcribe (高质量，自带标点)
+- **Ctrl+I**: 本地whisper模式 (省钱选项)
+- 移除原有的Kimi润色模式
+
+#### 3. 音频存档功能 (AUDIO_ARCHIVE_FEATURE.md)
+- 自动保存所有录音到 `audio_archive/` 目录
+- 时间戳命名: `recording_YYYYMMDD_HHMMSS.wav`
+- 默认保留所有音频文件
+
+#### 4. Kimi AI润色集成 (KIMI_USAGE.md)
+- 集成Kimi API进行文本润色
+- 智能标点符号添加
+- 可配置的润色功能
+
+#### 5. 状态显示优化 (STATUS_DISPLAY_IMPROVEMENTS.md)
+- 简化状态符号：0 (录音中), 1 (处理中)
+- 改进错误和警告消息显示
+- 更直观的用户反馈
+
+#### 6. 本地Whisper.cpp支持
+- 完整的本地转录支持
+- 无网络依赖
+- 隐私保护
+
+### 技术架构改进
+
+#### 1. 双处理器架构
+- 同时支持OpenAI和本地处理器
+- 动态切换不同的转录服务
+- `main.py` 重构支持多平台
+
+#### 2. 改进的错误处理
+- 更robust的异常处理机制
+- 失败重试逻辑
+- 用户友好的错误提示
+
+#### 3. 配置管理优化
+- 支持 `.env` 文件配置
+- 多平台服务切换
+- 灵活的API密钥管理
+
+### 文件修改详情
+
+#### 核心文件
+- `main.py`: 重构为双处理器架构，支持OpenAI+本地混合模式
+- `src/transcription/whisper.py`: 添加OpenAI支持，180秒超时，改进错误处理
+- `src/keyboard/listener.py`: 重新设计快捷键逻辑，优化状态管理
+
+#### 新增文件
+- `src/transcription/local_whisper.py`: 本地whisper.cpp集成 (277行)
+- `src/llm/kimi.py`: Kimi AI润色功能 (58行)
+- `docs/AUDIO_ARCHIVE_FEATURE.md`: 音频存档功能文档
+- `docs/KIMI_USAGE.md`: Kimi集成使用说明
+- `docs/STATUS_DISPLAY_IMPROVEMENTS.md`: 状态显示改进说明
+- `start.sh`: 启动脚本
+
+#### 配置文件
+- `.env.example`: 移除(与upstream不同的配置策略)
+- `requirements.txt`: 更新依赖包
+- `.gitignore`: 优化忽略规则
+
+### 开发状态
+
+#### ✅ 已完成功能
+- [x] OpenAI GPT-4 transcribe集成
+- [x] 音频存档系统
+- [x] 本地whisper支持
+- [x] Kimi润色功能
+- [x] 状态显示优化
+- [x] 双处理器架构
+
+#### 🚧 正在开发
+- [ ] Requirements文件优化 (.in/.txt分离)
+- [ ] README文档完善
+- [ ] 版本控制规范
+- [ ] 分支管理优化
+
+#### 📋 待开发
+- [ ] 更多转录服务支持
+- [ ] 配置界面
+- [ ] 性能监控
+- [ ] 单元测试覆盖
+
+## 版本信息
+- **当前版本**: 2.0.0
+- **基于上游**: ErlichLiu/Whisper-Input
+- **维护者**: Mor-Li
+- **最后更新**: 2025-01-26
+
+---
+**注意**: 本分支包含大量原创功能和改进，与上游仓库已有显著差异。建议作为独立项目继续维护。

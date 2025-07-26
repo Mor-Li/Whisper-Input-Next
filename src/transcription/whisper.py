@@ -46,7 +46,8 @@ def timeout_decorator(seconds):
 
 class WhisperProcessor:
     # 类级别的配置参数
-    DEFAULT_TIMEOUT = 20  # API 超时时间（秒）
+    DEFAULT_TIMEOUT = 20  # API 超时时间（秒）- GROQ等其他服务
+    OPENAI_TIMEOUT = 180  # OpenAI GPT-4 transcribe 超时时间（秒）
     DEFAULT_MODEL = None
     
     def __init__(self):
@@ -55,15 +56,15 @@ class WhisperProcessor:
         self.symbol = SymbolProcessor()
         self.add_symbol = os.getenv("ADD_SYMBOL", "false").lower() == "true"
         self.optimize_result = os.getenv("OPTIMIZE_RESULT", "false").lower() == "true"
-        self.timeout_seconds = self.DEFAULT_TIMEOUT
+        self.timeout_seconds = self.OPENAI_TIMEOUT if self.service_platform == "openai" else self.DEFAULT_TIMEOUT
         self.service_platform = os.getenv("SERVICE_PLATFORM", "groq").lower()
 
         if self.service_platform == "openai":
             # OpenAI GPT-4 transcribe 配置
             api_key = os.getenv("OFFICIAL_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
             assert api_key, "未设置 OFFICIAL_OPENAI_API_KEY 或 OPENAI_API_KEY 环境变量"
-            # 使用官方 OpenAI API，不设置自定义 base_url
-            self.client = OpenAI(api_key=api_key)
+            # 使用官方 OpenAI API
+            self.client = OpenAI(api_key=api_key, base_url="https://api.openai.com/v1")
             self.DEFAULT_MODEL = "gpt-4o-transcribe"
         elif self.service_platform == "groq":
             api_key = os.getenv("GROQ_API_KEY")
@@ -121,25 +122,31 @@ class WhisperProcessor:
             return text
         return self.cc.convert(text)
     
+    @timeout_decorator(180)  # OpenAI 专用超时时间
+    def _call_openai_api(self, mode, audio_data, prompt):
+        """调用 OpenAI GPT-4 transcribe API"""
+        if mode == "translations":
+            response = self.client.audio.translations.create(
+                model="gpt-4o-transcribe",
+                response_format="text",
+                prompt=prompt,
+                file=("audio.wav", audio_data)
+            )
+        else:  # transcriptions
+            response = self.client.audio.transcriptions.create(
+                model="gpt-4o-transcribe",
+                response_format="text",
+                prompt=prompt,
+                file=("audio.wav", audio_data)
+            )
+        return str(response).strip()
+    
     @timeout_decorator(10)
     def _call_whisper_api(self, mode, audio_data, prompt):
         """调用 Whisper API"""
         if self.service_platform == "openai":
-            # OpenAI GPT-4 transcribe API
-            if mode == "translations":
-                response = self.client.audio.translations.create(
-                    model="gpt-4o-transcribe",
-                    response_format="text",
-                    prompt=prompt,
-                    file=("audio.wav", audio_data)
-                )
-            else:  # transcriptions
-                response = self.client.audio.transcriptions.create(
-                    model="gpt-4o-transcribe",
-                    response_format="text",
-                    prompt=prompt,
-                    file=("audio.wav", audio_data)
-                )
+            # 使用专用的 OpenAI API 调用
+            return self._call_openai_api(mode, audio_data, prompt)
         else:
             # GROQ API
             if mode == "translations":
@@ -156,7 +163,7 @@ class WhisperProcessor:
                     prompt=prompt,
                     file=("audio.wav", audio_data)
                 )
-        return str(response).strip()
+            return str(response).strip()
 
     def process_audio(self, audio_buffer, mode="transcriptions", prompt=""):
         """调用 Whisper API 处理音频（转录或翻译）

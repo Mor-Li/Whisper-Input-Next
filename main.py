@@ -52,14 +52,24 @@ class VoiceAssistant:
             logger.warning("录音时长太短，状态将重置")
             self.keyboard_manager.reset_state()
         elif audio:
-            result = self.openai_processor.process_audio(
-                audio,
-                mode="transcriptions",
-                prompt=""
-            )
-            # 解构返回值
-            text, error = result if isinstance(result, tuple) else (result, None)
-            self.keyboard_manager.type_text(text, error)
+            try:
+                result = self.openai_processor.process_audio(
+                    audio,
+                    mode="transcriptions",
+                    prompt=""
+                )
+                # 解构返回值
+                text, error = result if isinstance(result, tuple) else (result, None)
+                if error:
+                    # OpenAI API 失败，显示错误信息并等待重试
+                    logger.error(f"OpenAI 转录失败: {error}")
+                    self.keyboard_manager.show_error(f"⚠️ OpenAI失败，再按Ctrl+F重试")
+                else:
+                    self.keyboard_manager.type_text(text, error)
+            except Exception as e:
+                # 意外错误，也显示重试提示
+                logger.error(f"OpenAI 处理发生意外错误: {e}")
+                self.keyboard_manager.show_error(f"⚠️ 处理失败，再按Ctrl+F重试")
         else:
             logger.error("没有录音数据，状态将重置")
             self.keyboard_manager.reset_state()

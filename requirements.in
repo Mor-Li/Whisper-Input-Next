@@ -1,14 +1,29 @@
-pynput 
-openai
-pip-tools
-pyqt5
-python-dotenv
+# Core dependencies for Whisper-Input v2.0.0
+# Voice transcription and input automation tool
+
+# Audio processing
 sounddevice
-numpy
-pyperclip
 soundfile
-colorlog
+numpy
+
+# OpenAI and HTTP clients  
 openai
 httpx
 requests
+
+# Keyboard and clipboard automation
+pynput
+pyperclip
+
+# Chinese text processing
 opencc-python-reimplemented
+
+# Configuration and logging
+python-dotenv
+colorlog
+
+# Development tools
+pip-tools
+
+# GUI (optional - for future features)
+pyqt5
