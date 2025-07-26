@@ -12,6 +12,11 @@ from src.utils.logger import logger
 from src.transcription.senseVoiceSmall import SenseVoiceSmallProcessor
 from src.transcription.local_whisper import LocalWhisperProcessor
 
+# 版本信息
+__version__ = "2.0.0"
+__author__ = "Mor-Li"
+__description__ = "Enhanced Voice Transcription Tool with OpenAI GPT-4 Transcribe"
+
 
 def check_microphone_permissions():
     """检查麦克风权限并提供指导"""
@@ -31,6 +36,7 @@ class VoiceAssistant:
         self.audio_recorder = AudioRecorder()
         self.openai_processor = openai_processor  # OpenAI GPT-4 transcribe
         self.local_processor = local_processor    # 本地 whisper
+        self.last_audio = None  # 保存上次的音频用于重试
         self.keyboard_manager = KeyboardManager(
             on_record_start=self.start_openai_recording,    # Ctrl+F: OpenAI
             on_record_stop=self.stop_openai_recording,
@@ -43,7 +49,15 @@ class VoiceAssistant:
     
     def start_openai_recording(self):
         """开始录音（OpenAI GPT-4 transcribe模式 - Ctrl+F）"""
-        self.audio_recorder.start_recording()
+        # 检查是否有上次失败的音频需要重试
+        if self.last_audio is not None:
+            # 重试上次的音频
+            logger.info("🔄 重试上次录音的OpenAI转录")
+            self.keyboard_manager.state = self.keyboard_manager._state_messages[self.keyboard_manager.state.__class__.PROCESSING]
+            self._process_openai_audio(self.last_audio, is_retry=True)
+        else:
+            # 正常开始新录音
+            self.audio_recorder.start_recording()
     
     def stop_openai_recording(self):
         """停止录音并处理（OpenAI GPT-4 transcribe模式 - Ctrl+F）"""
@@ -52,27 +66,35 @@ class VoiceAssistant:
             logger.warning("录音时长太短，状态将重置")
             self.keyboard_manager.reset_state()
         elif audio:
-            try:
-                result = self.openai_processor.process_audio(
-                    audio,
-                    mode="transcriptions",
-                    prompt=""
-                )
-                # 解构返回值
-                text, error = result if isinstance(result, tuple) else (result, None)
-                if error:
-                    # OpenAI API 失败，显示错误信息并等待重试
-                    logger.error(f"OpenAI 转录失败: {error}")
-                    self.keyboard_manager.show_error(f"⚠️ OpenAI失败，再按Ctrl+F重试")
-                else:
-                    self.keyboard_manager.type_text(text, error)
-            except Exception as e:
-                # 意外错误，也显示重试提示
-                logger.error(f"OpenAI 处理发生意外错误: {e}")
-                self.keyboard_manager.show_error(f"⚠️ 处理失败，再按Ctrl+F重试")
+            self.last_audio = audio  # 保存音频用于可能的重试
+            self._process_openai_audio(audio, is_retry=False)
         else:
             logger.error("没有录音数据，状态将重置")
             self.keyboard_manager.reset_state()
+    
+    def _process_openai_audio(self, audio, is_retry=False):
+        """处理OpenAI音频转录"""
+        try:
+            result = self.openai_processor.process_audio(
+                audio,
+                mode="transcriptions",
+                prompt=""
+            )
+            # 解构返回值
+            text, error = result if isinstance(result, tuple) else (result, None)
+            if error:
+                # OpenAI API 失败，显示感叹号等待重试
+                logger.error(f"OpenAI 转录失败: {error}")
+                self.keyboard_manager.show_error("!")  # 显示感叹号
+                # 不清除last_audio，等待用户按Ctrl+F重试
+            else:
+                # 转录成功，清除保存的音频
+                self.last_audio = None
+                self.keyboard_manager.type_text(text, error)
+        except Exception as e:
+            # 意外错误，也显示感叹号等待重试
+            logger.error(f"OpenAI 处理发生意外错误: {e}")
+            self.keyboard_manager.show_error("!")  # 显示感叹号
     
     def start_local_recording(self):
         """开始录音（本地 Whisper 模式 - Ctrl+I）"""
@@ -126,7 +148,7 @@ class VoiceAssistant:
     
     def run(self):
         """运行语音助手"""
-        logger.info("=== 语音助手已启动 ===")
+        logger.info(f"=== 语音助手已启动 (v{__version__}) ===")
         self.keyboard_manager.start_listening()
 
 def main():

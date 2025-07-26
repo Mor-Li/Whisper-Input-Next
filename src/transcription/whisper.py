@@ -56,8 +56,8 @@ class WhisperProcessor:
         self.symbol = SymbolProcessor()
         self.add_symbol = os.getenv("ADD_SYMBOL", "false").lower() == "true"
         self.optimize_result = os.getenv("OPTIMIZE_RESULT", "false").lower() == "true"
-        self.timeout_seconds = self.OPENAI_TIMEOUT if self.service_platform == "openai" else self.DEFAULT_TIMEOUT
         self.service_platform = os.getenv("SERVICE_PLATFORM", "groq").lower()
+        self.timeout_seconds = self.OPENAI_TIMEOUT if self.service_platform == "openai" else self.DEFAULT_TIMEOUT
 
         if self.service_platform == "openai":
             # OpenAI GPT-4 transcribe 配置
