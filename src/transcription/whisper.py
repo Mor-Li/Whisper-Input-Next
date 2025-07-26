@@ -74,8 +74,41 @@ class WhisperProcessor:
         
         # 添加Kimi处理器
         self.kimi_processor = KimiProcessor()
-        # 是否启用Kimi润色功能
-        self.enable_kimi_polish = os.getenv("ENABLE_KIMI_POLISH", "true").lower() == "true"
+        # 是否启用Kimi润色功能（默认关闭，通过快捷键动态控制）
+        self.enable_kimi_polish = os.getenv("ENABLE_KIMI_POLISH", "false").lower() == "true"
+        
+        # 创建音频存档目录
+        self.audio_archive_dir = "audio_archive"
+        self._ensure_archive_directory()
+
+    def _ensure_archive_directory(self):
+        """确保音频存档目录存在"""
+        if not os.path.exists(self.audio_archive_dir):
+            os.makedirs(self.audio_archive_dir)
+            logger.info(f"创建音频存档目录: {self.audio_archive_dir}")
+
+    def _save_audio_to_archive(self, audio_buffer):
+        """将音频数据保存到存档目录，并管理文件数量"""
+        # 生成带时间戳的文件名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        archive_filename = f"recording_{timestamp}.wav"
+        archive_path = os.path.join(self.audio_archive_dir, archive_filename)
+        
+        try:
+            # 重置缓冲区位置到开始
+            audio_buffer.seek(0)
+            with open(archive_path, 'wb') as f:
+                f.write(audio_buffer.read())
+            
+            logger.info(f"音频文件已保存到存档: {archive_path}")
+            
+            # 音频文件已存档，默认保留所有文件
+            
+            return archive_path
+        except Exception as e:
+            logger.error(f"保存音频文件到存档失败: {e}")
+            return None
+
 
     def _convert_traditional_to_simplified(self, text):
         """将繁体中文转换为简体中文"""
