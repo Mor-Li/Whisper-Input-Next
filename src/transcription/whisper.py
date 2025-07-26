@@ -141,29 +141,33 @@ class WhisperProcessor:
             )
         return str(response).strip()
     
-    @timeout_decorator(10)
     def _call_whisper_api(self, mode, audio_data, prompt):
         """调用 Whisper API"""
         if self.service_platform == "openai":
-            # 使用专用的 OpenAI API 调用
+            # 使用专用的 OpenAI API 调用（已有180秒超时）
             return self._call_openai_api(mode, audio_data, prompt)
         else:
-            # GROQ API
-            if mode == "translations":
-                response = self.client.audio.translations.create(
-                    model="whisper-large-v3",
-                    response_format="text",
-                    prompt=prompt,
-                    file=("audio.wav", audio_data)
-                )
-            else:  # transcriptions
-                response = self.client.audio.transcriptions.create(
-                    model="whisper-large-v3-turbo",
-                    response_format="text",
-                    prompt=prompt,
-                    file=("audio.wav", audio_data)
-                )
-            return str(response).strip()
+            # GROQ API 使用10秒超时
+            return self._call_groq_api(mode, audio_data, prompt)
+    
+    @timeout_decorator(10)
+    def _call_groq_api(self, mode, audio_data, prompt):
+        """调用 GROQ API"""
+        if mode == "translations":
+            response = self.client.audio.translations.create(
+                model="whisper-large-v3",
+                response_format="text",
+                prompt=prompt,
+                file=("audio.wav", audio_data)
+            )
+        else:  # transcriptions
+            response = self.client.audio.transcriptions.create(
+                model="whisper-large-v3-turbo",
+                response_format="text",
+                prompt=prompt,
+                file=("audio.wav", audio_data)
+            )
+        return str(response).strip()
 
     def process_audio(self, audio_buffer, mode="transcriptions", prompt=""):
         """调用 Whisper API 处理音频（转录或翻译）

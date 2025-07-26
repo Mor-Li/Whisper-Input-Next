@@ -7,6 +7,7 @@ load_dotenv()
 
 from src.audio.recorder import AudioRecorder
 from src.keyboard.listener import KeyboardManager, check_accessibility_permissions
+from src.keyboard.inputState import InputState
 from src.transcription.whisper import WhisperProcessor
 from src.utils.logger import logger
 from src.transcription.senseVoiceSmall import SenseVoiceSmallProcessor
@@ -53,7 +54,8 @@ class VoiceAssistant:
         if self.last_audio is not None:
             # 重试上次的音频
             logger.info("🔄 重试上次录音的OpenAI转录")
-            self.keyboard_manager.state = self.keyboard_manager._state_messages[self.keyboard_manager.state.__class__.PROCESSING]
+            # 直接设置为处理状态
+            self.keyboard_manager.state = InputState.PROCESSING
             self._process_openai_audio(self.last_audio, is_retry=True)
         else:
             # 正常开始新录音
