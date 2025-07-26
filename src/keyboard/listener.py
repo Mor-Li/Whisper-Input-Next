@@ -36,14 +36,14 @@ class KeyboardManager:
         self._state = InputState.IDLE
         self._state_messages = {
             InputState.IDLE: "",
-            InputState.RECORDING: "🎤",
-            InputState.RECORDING_TRANSLATE: "🎤",
-            InputState.RECORDING_KIMI: "🎤",
-            InputState.PROCESSING: "🔄",
-            InputState.PROCESSING_KIMI: "🔄",
-            InputState.TRANSLATING: "🔄",
+            InputState.RECORDING: "0",
+            InputState.RECORDING_TRANSLATE: "0",
+            InputState.RECORDING_KIMI: "0",
+            InputState.PROCESSING: "1",
+            InputState.PROCESSING_KIMI: "1",
+            InputState.TRANSLATING: "1",
             InputState.ERROR: lambda msg: f"{msg}",  # 错误消息使用函数动态生成
-            InputState.WARNING: lambda msg: f"⚠️ {msg}"  # 警告消息使用函数动态生成
+            InputState.WARNING: lambda msg: f"! {msg}"  # 警告消息使用感叹号
         }
 
         # 获取系统平台
@@ -215,17 +215,16 @@ class KeyboardManager:
             logger.info("正在输入转录文本...")
             self._delete_previous_text()
             
-            # 直接输入文本，不添加任何标记
-            self.type_temp_text(text)
+            # 最终转录文本通过剪贴板输入
+            pyperclip.copy(text)
+            
+            # 模拟 Ctrl + V 粘贴文本
+            with self.keyboard.pressed(self.sysetem_platform):
+                self.keyboard.press('v')
+                self.keyboard.release('v')
+            
             # 等待一小段时间确保文本已输入
             time.sleep(0.5)
-            
-            # 将转录结果复制到剪贴板
-            if os.getenv("KEEP_ORIGINAL_CLIPBOARD", "true").lower() != "true":
-                pyperclip.copy(text)
-            else:
-                # 恢复原始剪贴板内容
-                self._restore_clipboard()
             
             logger.info("文本输入完成")
             
@@ -249,14 +248,23 @@ class KeyboardManager:
         if not text:
             return
             
-        # 将文本复制到剪贴板
-        pyperclip.copy(text)
-
-        # 模拟 Ctrl + V 粘贴文本
-        with self.keyboard.pressed(self.sysetem_platform):
-            self.keyboard.press('v')
-            self.keyboard.release('v')
-
+        # 判断是否为状态符号（现在使用数字）
+        is_status_symbol = text in ['0', '1']
+        
+        if is_status_symbol:
+            # 状态符号直接输入，不使用剪贴板
+            try:
+                self.keyboard.type(text)
+            except Exception as e:
+                # 如果直接输入失败，记录错误但不中断程序
+                logger.warning(f"直接输入状态符号失败: {e}, 文本: {text}")
+        else:
+            # 其他文本（如错误消息、警告等）通过剪贴板输入
+            pyperclip.copy(text)
+            with self.keyboard.pressed(self.sysetem_platform):
+                self.keyboard.press('v')
+                self.keyboard.release('v')
+        
         # 更新临时文本长度
         self.temp_text_length = len(text)
     
@@ -330,28 +338,19 @@ class KeyboardManager:
                 self.y_pressed = True
                 # 检查是否同时按下了ctrl+y（Kimi润色模式）
                 if self.ctrl_pressed and self.y_pressed:
-                    if self._original_clipboard is None:
-                        self._original_clipboard = pyperclip.paste()
                     self.toggle_kimi_recording()
             elif is_transcription_key:  # F键
                 self.f_pressed = True
                 # 检查是否同时按下了ctrl+f
                 if self.ctrl_pressed and self.f_pressed:
-                    # 在开始任何操作前保存剪贴板内容
-                    if self._original_clipboard is None:
-                        self._original_clipboard = pyperclip.paste()
                     self.toggle_recording()
             elif is_translation_key:  # Ctrl键
                 self.ctrl_pressed = True
                 # 检查是否同时按下了ctrl+f（普通录音模式）
                 if self.ctrl_pressed and self.f_pressed:
-                    if self._original_clipboard is None:
-                        self._original_clipboard = pyperclip.paste()
                     self.toggle_recording()
                 # 检查是否同时按下了ctrl+y（Kimi润色模式）
                 elif self.ctrl_pressed and self.y_pressed:
-                    if self._original_clipboard is None:
-                        self._original_clipboard = pyperclip.paste()
                     self.toggle_kimi_recording()
         except AttributeError:
             pass
@@ -403,6 +402,7 @@ class KeyboardManager:
         # 重置状态标志
         self.ctrl_pressed = False
         self.f_pressed = False
+        self.y_pressed = False
         self.is_recording = False
         self.last_key_time = 0
         self.processing_text = None
