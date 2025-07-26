@@ -1,7 +1,7 @@
 # Whisper-Input-Next - Enhanced Voice Transcription Tool
 
 <p align="center">
-  <img src="docs/whisper_claudecode.png" alt="项目海报" />
+  <img src="docs/whisper_claudecode.png" alt="Project Poster" />
 </p>
 
 <p align="center">
@@ -14,230 +14,236 @@
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" />
   </a>
+  <a href="docs/README_zh-CN.md">
+    <img src="https://img.shields.io/badge/docs-中文文档-red.svg" alt="Chinese Documentation" />
+  </a>
 </p>
 
-一个基于语音转录的智能输入工具，支持多种转录服务和高质量的语音识别功能。
+An intelligent voice transcription input tool supporting multiple transcription services and high-quality speech recognition features.
 
-## 🚀 项目背景
+## 🚀 Project Background
 
-本项目基于 [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/Whisper-Input) 进行二次开发。原项目已停止维护数月，我们在其基础上进行了大量功能扩展和架构优化，添加了OpenAI GPT-4o transcribe集成、音频存档、本地whisper支持等重要功能。[为什么要用这个项目？](./docs/[V3.0.0]_知乎blog.md)
+This project is based on [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/Whisper-Input) for secondary development. The original project has been inactive for months, so we have made extensive feature expansions and architectural optimizations, adding important features like OpenAI GPT-4o transcribe integration, audio archiving, local whisper support, and more. [Why use this project?](./docs/[V3.0.0]_知乎blog.md)
 
-## ✨ 主要特性
+## ✨ Key Features
 
-### 🎯 核心功能
-- **多平台转录服务**: 支持OpenAI GPT-4o transcribe、GROQ、SiliconFlow、本地whisper.cpp
-- **智能快捷键**: Ctrl+F (OpenAI高质量) / Ctrl+I (本地省钱模式)
-- **音频存档**: 自动保存所有录音，支持历史回放
-- **失败重试**: 智能错误处理和重试机制
-- **实时状态**: 直观的录音和处理状态显示
+### 🎯 Core Functions
+- **Multi-platform Transcription Services**: Support for OpenAI GPT-4o transcribe, GROQ, SiliconFlow, local whisper.cpp
+- **Smart Hotkeys**: Ctrl+F (OpenAI high-quality) / Ctrl+I (local cost-saving mode)
+- **Audio Archive**: Automatically save all recordings, support history playback
+- **Failure Retry**: Intelligent error handling and retry mechanism
 
-### 🔧 技术特性
-- **双处理器架构**: 同时支持云端和本地转录
-- **180秒超时**: OpenAI专用长时间超时支持
-- **自动标点**: GPT-4o transcribe自带标点符号
-- **隐私保护**: 本地处理选项，数据不上传
+### 🔧 Technical Features
+- **Dual Processor Architecture**: OpenAI + Local processors working simultaneously
+- **180s Long Audio Support**: Support up to 3 minutes of continuous recording
+- **Smart Status Indicators**: Simple numeric status display (0, 1, !)
+- **Cache System**: Audio archive with transcription result caching
 
-## 📦 快速开始
+### 🌟 User Experience
+- **No Clipboard Pollution**: Clean status display without interfering with system clipboard
+- **One-click Retry**: Failed transcriptions can be retried without re-recording
+- **Real-time Input**: Transcription results appear directly at cursor position
+- **Privacy Protection**: Local processing option, data not uploaded
 
-### 环境要求
+## 📦 Quick Start
+
+### Environment Requirements
 - Python 3.12+
-- macOS/Linux (Windows支持开发中)
-- 网络连接 (仅云端服务需要)
-- **本地whisper.cpp** (使用本地转录功能时需要)
+- macOS/Linux (Windows support in development)
+- Network connection (only required for cloud services)
+- **Local whisper.cpp** (required when using local transcription features)
 
-### 安装步骤
+### Installation Steps
 
-1. **克隆项目**
+1. **Clone Project**
 ```bash
 git clone https://github.com/Mor-Li/Whisper-Input-Next.git
 cd Whisper-Input-Next
 ```
 
-2. **创建虚拟环境**
+2. **Create Virtual Environment**
 ```bash
 python -m venv venv
 source venv/bin/activate  # macOS/Linux
-# 或 venv\\Scripts\\activate  # Windows
+# or venv\\Scripts\\activate  # Windows
 ```
 
-3. **安装依赖**
+3. **Install Dependencies**
 ```bash
 pip install -r requirements.txt
 ```
 
-4. **安装本地whisper.cpp (可选，使用本地转录时需要)**
+4. **Install Local whisper.cpp (Optional, required for local transcription)**
 ```bash
-# 克隆whisper.cpp仓库
+# Clone whisper.cpp repository
 git clone https://github.com/ggerganov/whisper.cpp.git
 cd whisper.cpp
 
-# 编译 (macOS/Linux)
+# Compile (macOS/Linux)
 make
 
-# 下载模型文件 (推荐large-v3)
+# Download model file (recommend large-v3)
 bash ./models/download-ggml-model.sh large-v3
 
-# 记录whisper-cli路径，稍后配置到.env文件
-echo "Whisper CLI 路径: $(pwd)/build/bin/whisper-cli"
+# Record whisper-cli path for later configuration in .env file
+echo "Whisper CLI Path: $(pwd)/build/bin/whisper-cli"
 cd ..
 ```
 
-5. **配置环境变量**
+5. **Configure Environment Variables**
 ```bash
 cp env.example .env
-# 编辑 .env 文件，配置必要参数:
-# - OFFICIAL_OPENAI_API_KEY: OpenAI API密钥 (必需)
-# - WHISPER_CLI_PATH: whisper.cpp可执行文件路径 (使用本地转录时必需)
-# - WHISPER_MODEL_PATH: whisper模型文件路径 (使用本地转录时必需)
+# Edit .env file, configure necessary parameters:
+# - OFFICIAL_OPENAI_API_KEY: OpenAI API key (required)
+# - WHISPER_CLI_PATH: whisper.cpp executable path (required for local transcription)
+# - WHISPER_MODEL_PATH: whisper model file path (required for local transcription)
 ```
 
-6. **运行程序**
+6. **Run Program**
 ```bash
 python main.py
-# 或使用启动脚本
+# or use startup script
 chmod +x start.sh
 ./start.sh
 ```
 
-### ⚠️ 重要说明
+### ⚠️ Important Notes
 
-**必需配置项：**
-- `OFFICIAL_OPENAI_API_KEY`: OpenAI GPT-4o transcribe API密钥
-- `WHISPER_CLI_PATH`: 本地whisper.cpp可执行文件绝对路径
-- `WHISPER_MODEL_PATH`: whisper模型文件路径 (相对于whisper.cpp根目录)
+**Required Configuration:**
+- `OFFICIAL_OPENAI_API_KEY`: OpenAI GPT-4o transcribe API key
+- `WHISPER_CLI_PATH`: Local whisper.cpp executable absolute path
+- `WHISPER_MODEL_PATH`: whisper model file path (relative to whisper.cpp root directory)
 
-**whisper.cpp安装指南：**
-1. 从 [whisper.cpp仓库](https://github.com/ggerganov/whisper.cpp) 克隆并编译
-2. 下载large-v3模型: `bash ./models/download-ggml-model.sh large-v3`
-3. 在.env中配置正确的路径
+**whisper.cpp Installation Guide:**
+1. Clone and compile from [whisper.cpp repository](https://github.com/ggerganov/whisper.cpp)
+2. Download large-v3 model: `bash ./models/download-ggml-model.sh large-v3`
+3. Configure correct paths in .env
 
-## ⚙️ 配置说明
+## ⚙️ Configuration Guide
 
-### 环境变量配置
+### Environment Variable Configuration
 
-在 `.env` 文件中配置以下参数：
+Configure the following parameters in the `.env` file:
 
 ```bash
-# 服务平台选择 (推荐使用我们维护的双平台配置)
-SERVICE_PLATFORM=openai&local  # 我们主要维护的配置
+# Service platform selection (recommend using our maintained dual-platform configuration)
+SERVICE_PLATFORM=openai&local  # Our primarily maintained configuration
 
-# OpenAI 配置 (必需)
+# OpenAI configuration (required)
 OFFICIAL_OPENAI_API_KEY=sk-proj-xxx
 
-# 本地whisper.cpp配置 (使用本地转录时必需)
+# Local whisper.cpp configuration (required for local transcription)
 WHISPER_CLI_PATH=/path/to/whisper.cpp/build/bin/whisper-cli
 WHISPER_MODEL_PATH=models/ggml-large-v3.bin
 
-# 键盘快捷键配置
+# Keyboard shortcut configuration
 TRANSCRIPTIONS_BUTTON=f
 TRANSLATIONS_BUTTON=ctrl
 SYSTEM_PLATFORM=mac  # mac/win
 
-# 功能开关
+# Feature switches
 CONVERT_TO_SIMPLIFIED=false
 ADD_SYMBOL=false
 OPTIMIZE_RESULT=false
 ```
 
-**重要说明**: 
-- 本项目主要维护 `SERVICE_PLATFORM=openai&local` 配置
-- 这是我们推荐和测试最充分的配置
-- 其他单平台配置（groq、siliconflow等）仅作兼容性保留
+**Important Note**: 
+- This project primarily maintains `SERVICE_PLATFORM=openai&local` configuration
+- This is our recommended and most thoroughly tested configuration
+- Other single-platform configurations (groq, siliconflow, etc.) are maintained for compatibility only
 
-### 快捷键说明
+### Hotkey Instructions
 
-| 快捷键 | 功能 | 服务 | 特点 |
-|--------|------|------|------|
-| `Ctrl+F` | 高质量转录 | OpenAI GPT-4o transcribe | 自带标点，质量最高 |
-| `Ctrl+I` | 本地转录 | whisper.cpp | 离线处理，隐私保护 |
+| Hotkey | Function | Service | Features |
+|--------|----------|---------|-----------|
+| `Ctrl+F` | High-quality transcription | OpenAI GPT-4o transcribe | Built-in punctuation, highest quality |
+| `Ctrl+I` | Local transcription | whisper.cpp | Offline processing, privacy protection |
 
-### 状态指示器
+### Status Indicators
 
-程序运行时会在光标位置显示简洁的状态指示器：
+The program displays concise status indicators at the cursor position during runtime:
 
-| 状态 | 含义 | 操作 |
-|------|------|------|
-| `0` | 正在录音 | 再次按快捷键停止录音 |
-| `1` | 正在转录 | 请等待转录完成 |
-| `!` | 转录失败/出错 | 再次按`Ctrl+F`重试（音频已保存） |
+| Status | Meaning | Action |
+|--------|---------|--------|
+| `0` | Recording | Press hotkey again to stop recording |
+| `1` | Transcribing | Please wait for transcription to complete |
+| `!` | Transcription failed/error | Press `Ctrl+F` again to retry (audio saved) |
 
-**设计优化**：
-- 使用简洁数字状态，避免复杂emoji符号
-- 不污染系统剪贴板，只在光标位置显示
-- 状态清晰明了，便于快速识别
+**Design Optimizations**:
+- Use concise numeric status, avoid complex emoji symbols
+- No system clipboard pollution, display only at cursor position
+- Clear and intuitive status, easy to quickly identify
 
-**重试机制说明**：
-- 当转录失败时，系统会保存录音并显示`!`状态
-- 此时无需重新录音，直接按`Ctrl+F`即可重试
-- 重试会使用之前保存的音频，直到转录成功
+**Retry Mechanism Instructions**:
+- When transcription fails, the system saves the recording and displays `!` status
+- No need to re-record, simply press `Ctrl+F` to retry
+- Retry uses previously saved audio until transcription succeeds
 
-## 📚 功能文档
+## 📚 Feature Documentation
 
-- [🔊 音频存档功能](./docs/[V3.0.0]_AUDIO_ARCHIVE_FEATURE.md) - *v3.0.0引入*
-- [🤖 Kimi润色集成](./docs/[DEPRECATED]_KIMI_USAGE.md) - *已废弃*
-- [📊 状态显示优化](./docs/[V3.0.0]_STATUS_DISPLAY_IMPROVEMENTS.md) - *v3.0.0引入*
-- [🔄 分支差异对比](./docs/[V3.0.0]_BRANCH_DIFFERENCES.md) - *v3.0.0引入*
-- [📋 版本控制文档](./docs/[V3.0.0]_VERSION_CONTROL.md) - *v3.0.0建立*
+- [🔊 Audio Archive Feature](./docs/[V3.0.0]_AUDIO_ARCHIVE_FEATURE.md) - *Introduced in v3.0.0*
+- [🤖 Kimi Polish Integration](./docs/[DEPRECATED]_KIMI_USAGE.md) - *Deprecated*
+- [📊 Status Display Improvements](./docs/[V3.0.0]_STATUS_DISPLAY_IMPROVEMENTS.md) - *Introduced in v3.0.0*
+- [🔄 Branch Differences Comparison](./docs/[V3.0.0]_BRANCH_DIFFERENCES.md) - *Introduced in v3.0.0*
+- [📋 Version Control Documentation](./docs/[V3.0.0]_VERSION_CONTROL.md) - *Established in v3.0.0*
 
-## 🛠️ 开发状态
+## 🛠️ Development Status
 
-### ✅ 已完成功能
-- [x] OpenAI GPT-4o transcribe集成 (180秒超时)
-- [x] 双处理器架构 (云端+本地)
-- [x] 音频存档系统 + 转录缓存(cache.json)
-- [x] 智能重试机制 (多次失败循环重试)
-- [x] 状态显示优化 (0→1→!)
-- [x] 本地whisper.cpp支持
-- [x] 项目文档完善
+### ✅ Completed Features
+- [x] OpenAI GPT-4o transcribe integration
+- [x] Audio archive system
+- [x] Local whisper support
+- [x] Dual processor architecture
+- [x] Smart retry mechanism
+- [x] Project documentation improvement
 
-### 🚧 正在开发  
-*当前无正在开发的功能*
+### 🚧 In Development  
+*No features currently in development*
 
-### 📋 计划功能
-*当前无计划功能*
+### 📋 Planned Features
+*No features currently planned*
 
-## 🤝 贡献指南
+## 🤝 Contributing Guidelines
 
-欢迎提交Issues和Pull Requests！
+We welcome all forms of contributions! Whether it's:
 
-### 开发环境设置
+- 🐛 **Bug Reports**: Found an issue? [Create an Issue](https://github.com/Mor-Li/Whisper-Input-Next/issues)
+- 💡 **Feature Suggestions**: Have great ideas? [Start a Discussion](https://github.com/Mor-Li/Whisper-Input-Next/discussions)
+- 📝 **Code Contributions**: Submit Pull Requests
+- 📚 **Documentation Improvements**: Help improve documentation
+- 🌍 **Translations**: Help translate to more languages
+
+### Development Environment Setup
+
 ```bash
-# 克隆项目
+# Clone repository
 git clone https://github.com/Mor-Li/Whisper-Input-Next.git
 cd Whisper-Input-Next
 
-# 设置开发模式
-pip install -r requirements.txt
-pip install -e .
+# Create development environment
+python -m venv venv
+source venv/bin/activate
 
-# 运行测试
-python -m pytest tests/
+# Install dependencies
+pip install -r requirements.txt
+
+# Start development
+python main.py
 ```
 
-### 提交规范
-- feat: 新功能
-- fix: 修复问题  
-- docs: 文档更新
-- style: 代码风格
-- refactor: 重构
-- test: 测试相关
+## 🙏 Acknowledgments
 
-## 📄 许可证
+- Thanks to [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/Whisper-Input) for the original project foundation
+- Thanks to OpenAI for providing excellent transcription API services
+- Thanks to [whisper.cpp](https://github.com/ggerganov/whisper.cpp) community for local processing support
+- Thanks to all contributors and users for their support
 
-本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
+## 📞 Contact Information
 
-## 🙏 致谢
-
-- 感谢 [ErlichLiu](https://github.com/ErlichLiu) 提供的原始项目基础
-- 感谢 OpenAI 提供的强大转录服务
-- 感谢所有贡献者和用户的支持
-
-## 📞 联系方式
-
-- **项目地址**: https://github.com/Mor-Li/Whisper-Input-Next  
-- **问题报告**: [Issues](https://github.com/Mor-Li/Whisper-Input-Next/issues)
-- **功能建议**: [Discussions](https://github.com/Mor-Li/Whisper-Input-Next/discussions)
+- **Project Address**: https://github.com/Mor-Li/Whisper-Input-Next  
+- **Issue Reports**: [Issues](https://github.com/Mor-Li/Whisper-Input-Next/issues)
+- **Feature Suggestions**: [Discussions](https://github.com/Mor-Li/Whisper-Input-Next/discussions)
 
 ---
 
-**⭐ 如果这个项目对你有帮助，请给个Star支持一下！**
+**⭐ If this project helps you, please give it a Star for support!**
