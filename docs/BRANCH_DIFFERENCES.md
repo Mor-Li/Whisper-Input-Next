@@ -19,7 +19,7 @@
 - 自动标点符号，无需后处理
 
 #### 2. 键盘快捷键重新设计
-- **Ctrl+F**: OpenAI GPT-4 transcribe (高质量，自带标点)
+- **Ctrl+F**: OpenAI GPT-4o transcribe (高质量，自带标点)
 - **Ctrl+I**: 本地whisper模式 (省钱选项)
 - 移除原有的Kimi润色模式
 
@@ -83,7 +83,7 @@
 ### 开发状态
 
 #### ✅ 已完成功能
-- [x] OpenAI GPT-4 transcribe集成
+- [x] OpenAI GPT-4o transcribe集成
 - [x] 音频存档系统
 - [x] 本地whisper支持
 - [x] Kimi润色功能

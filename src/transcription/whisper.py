@@ -3,6 +3,7 @@ import threading
 import time
 from functools import wraps
 import glob
+import json
 from datetime import datetime
 
 import dotenv
@@ -47,7 +48,7 @@ def timeout_decorator(seconds):
 class WhisperProcessor:
     # 类级别的配置参数
     DEFAULT_TIMEOUT = 20  # API 超时时间（秒）- GROQ等其他服务
-    OPENAI_TIMEOUT = 180  # OpenAI GPT-4 transcribe 超时时间（秒）
+    OPENAI_TIMEOUT = 180  # OpenAI GPT-4o transcribe 超时时间（秒）
     DEFAULT_MODEL = None
     
     def __init__(self):
@@ -60,7 +61,7 @@ class WhisperProcessor:
         self.timeout_seconds = self.OPENAI_TIMEOUT if self.service_platform == "openai" else self.DEFAULT_TIMEOUT
 
         if self.service_platform == "openai":
-            # OpenAI GPT-4 transcribe 配置
+            # OpenAI GPT-4o transcribe 配置
             api_key = os.getenv("OFFICIAL_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
             assert api_key, "未设置 OFFICIAL_OPENAI_API_KEY 或 OPENAI_API_KEY 环境变量"
             # 使用官方 OpenAI API
@@ -91,6 +92,38 @@ class WhisperProcessor:
         if not os.path.exists(self.audio_archive_dir):
             os.makedirs(self.audio_archive_dir)
             logger.info(f"创建音频存档目录: {self.audio_archive_dir}")
+    
+    def _load_transcription_cache(self):
+        """加载转录缓存"""
+        cache_path = os.path.join(self.audio_archive_dir, "cache.json")
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.warning(f"加载转录缓存失败: {e}")
+        return {}
+    
+    def _save_transcription_cache(self, cache_data):
+        """保存转录缓存"""
+        cache_path = os.path.join(self.audio_archive_dir, "cache.json")
+        try:
+            with open(cache_path, 'w', encoding='utf-8') as f:
+                json.dump(cache_data, f, ensure_ascii=False, indent=2)
+            logger.info(f"转录缓存已保存: {cache_path}")
+        except Exception as e:
+            logger.error(f"保存转录缓存失败: {e}")
+    
+    def _add_to_cache(self, audio_filename, transcription_result, service_platform):
+        """添加转录结果到缓存"""
+        cache = self._load_transcription_cache()
+        cache[audio_filename] = {
+            "transcription": transcription_result,
+            "service": service_platform,
+            "timestamp": datetime.now().isoformat(),
+            "model": self.DEFAULT_MODEL if hasattr(self, 'DEFAULT_MODEL') else "unknown"
+        }
+        self._save_transcription_cache(cache)
 
     def _save_audio_to_archive(self, audio_buffer):
         """将音频数据保存到存档目录，并管理文件数量"""
@@ -124,7 +157,7 @@ class WhisperProcessor:
     
     @timeout_decorator(180)  # OpenAI 专用超时时间
     def _call_openai_api(self, mode, audio_data, prompt):
-        """调用 OpenAI GPT-4 transcribe API"""
+        """调用 OpenAI GPT-4o transcribe API"""
         if mode == "translations":
             response = self.client.audio.translations.create(
                 model="gpt-4o-transcribe",
@@ -195,7 +228,7 @@ class WhisperProcessor:
             result = self._convert_traditional_to_simplified(result)
             logger.info(f"识别结果: {result}")
             
-            # OpenAI GPT-4 transcribe 自带标点符号，无需额外处理
+            # OpenAI GPT-4o transcribe 自带标点符号，无需额外处理
             if self.service_platform != "openai":
                 # 仅在 groq API 时添加标点符号
                 if self.service_platform == "groq" and self.add_symbol:
@@ -204,6 +237,11 @@ class WhisperProcessor:
                 if self.optimize_result:
                     result = self.symbol.optimize_result(result)
                     logger.info(f"优化结果: {result}")
+
+            # 添加转录结果到缓存
+            if archive_path:
+                audio_filename = os.path.basename(archive_path)
+                self._add_to_cache(audio_filename, result, self.service_platform)
 
             return result, None
             

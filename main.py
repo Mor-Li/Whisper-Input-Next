@@ -35,7 +35,7 @@ def check_microphone_permissions():
 class VoiceAssistant:
     def __init__(self, openai_processor, local_processor):
         self.audio_recorder = AudioRecorder()
-        self.openai_processor = openai_processor  # OpenAI GPT-4 transcribe
+        self.openai_processor = openai_processor  # OpenAI GPT-4o transcribe
         self.local_processor = local_processor    # 本地 whisper
         self.last_audio = None  # 保存上次的音频用于重试
         self.keyboard_manager = KeyboardManager(
@@ -49,7 +49,7 @@ class VoiceAssistant:
         )
     
     def start_openai_recording(self):
-        """开始录音（OpenAI GPT-4 transcribe模式 - Ctrl+F）"""
+        """开始录音（OpenAI GPT-4o transcribe模式 - Ctrl+F）"""
         # 检查是否有上次失败的音频需要重试
         if self.last_audio is not None:
             # 重试上次的音频
@@ -62,7 +62,7 @@ class VoiceAssistant:
             self.audio_recorder.start_recording()
     
     def stop_openai_recording(self):
-        """停止录音并处理（OpenAI GPT-4 transcribe模式 - Ctrl+F）"""
+        """停止录音并处理（OpenAI GPT-4o transcribe模式 - Ctrl+F）"""
         audio = self.audio_recorder.stop_recording()
         if audio == "TOO_SHORT":
             logger.warning("录音时长太短，状态将重置")
@@ -88,15 +88,19 @@ class VoiceAssistant:
                 # OpenAI API 失败，显示感叹号等待重试
                 logger.error(f"OpenAI 转录失败: {error}")
                 self.keyboard_manager.show_error("!")  # 显示感叹号
-                # 不清除last_audio，等待用户按Ctrl+F重试
+                # 不清除last_audio，继续保持循环等待用户按Ctrl+F重试
+                logger.info("💡 转录失败，音频已保存，再按Ctrl+F继续重试")
             else:
-                # 转录成功，清除保存的音频
+                # 转录成功，清除保存的音频，结束重试循环
                 self.last_audio = None
                 self.keyboard_manager.type_text(text, error)
+                logger.info("✅ 转录成功，重试循环结束")
         except Exception as e:
             # 意外错误，也显示感叹号等待重试
             logger.error(f"OpenAI 处理发生意外错误: {e}")
             self.keyboard_manager.show_error("!")  # 显示感叹号
+            # 不清除last_audio，继续保持循环
+            logger.info("💡 处理异常，音频已保存，再按Ctrl+F继续重试")
     
     def start_local_recording(self):
         """开始录音（本地 Whisper 模式 - Ctrl+I）"""
@@ -154,7 +158,7 @@ class VoiceAssistant:
         self.keyboard_manager.start_listening()
 
 def main():
-    # 判断是 OpenAI GPT-4 transcribe 还是 GROQ Whisper 还是 SiliconFlow 还是本地whisper.cpp
+    # 判断是 OpenAI GPT-4o transcribe 还是 GROQ Whisper 还是 SiliconFlow 还是本地whisper.cpp
     service_platform = os.getenv("SERVICE_PLATFORM", "siliconflow")
     
     # 支持 openai&local 双平台配置（我们的默认维护配置）

@@ -3,11 +3,10 @@
 .env_*
 .env.*
 
-# 忽略所有.pyc文件
+# 忽略Python缓存
 *.pyc
-
-# 忽略所有.pyo文件
 *.pyo
+__pycache__/
 
 # 忽略 venv 目录
 venv/
@@ -37,4 +36,7 @@ whisper-env
 
 # 忽略音频存档目录
 audio_archive/
+# 但保留音频存档目录结构，忽略cache.json
+audio_archive/cache.json
+
 .claude

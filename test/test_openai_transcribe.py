@@ -52,7 +52,7 @@ def test_openai_transcribe():
     try:
         # 打开音频文件
         with open(latest_audio, "rb") as audio_file:
-            print("🚀 正在调用 OpenAI GPT-4 transcribe API...")
+            print("🚀 正在调用 OpenAI GPT-4o transcribe API...")
             
             # 调用 gpt-4o-transcribe 模型
             transcription = client.audio.transcriptions.create(

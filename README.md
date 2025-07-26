@@ -8,12 +8,12 @@
 
 ## 🚀 项目背景
 
-本项目基于 [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/Whisper-Input) 进行二次开发。原项目已停止维护数月，我们在其基础上进行了大量功能扩展和架构优化，添加了OpenAI GPT-4 transcribe集成、音频存档、本地whisper支持等重要功能。
+本项目基于 [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/Whisper-Input) 进行二次开发。原项目已停止维护数月，我们在其基础上进行了大量功能扩展和架构优化，添加了OpenAI GPT-4o transcribe集成、音频存档、本地whisper支持等重要功能。
 
 ## ✨ 主要特性
 
 ### 🎯 核心功能
-- **多平台转录服务**: 支持OpenAI GPT-4 transcribe、GROQ、SiliconFlow、本地whisper.cpp
+- **多平台转录服务**: 支持OpenAI GPT-4o transcribe、GROQ、SiliconFlow、本地whisper.cpp
 - **智能快捷键**: Ctrl+F (OpenAI高质量) / Ctrl+I (本地省钱模式)
 - **音频存档**: 自动保存所有录音，支持历史回放
 - **失败重试**: 智能错误处理和重试机制
@@ -22,7 +22,7 @@
 ### 🔧 技术特性
 - **双处理器架构**: 同时支持云端和本地转录
 - **180秒超时**: OpenAI专用长时间超时支持
-- **自动标点**: GPT-4 transcribe自带标点符号
+- **自动标点**: GPT-4o transcribe自带标点符号
 - **隐私保护**: 本地处理选项，数据不上传
 
 ## 📦 快速开始
@@ -99,7 +99,7 @@ OPTIMIZE_RESULT=false
 
 | 快捷键 | 功能 | 服务 | 特点 |
 |--------|------|------|------|
-| `Ctrl+F` | 高质量转录 | OpenAI GPT-4 transcribe | 自带标点，质量最高 |
+| `Ctrl+F` | 高质量转录 | OpenAI GPT-4o transcribe | 自带标点，质量最高 |
 | `Ctrl+I` | 本地转录 | whisper.cpp | 离线处理，隐私保护 |
 
 ## 📚 功能文档
@@ -112,18 +112,19 @@ OPTIMIZE_RESULT=false
 ## 🛠️ 开发状态
 
 ### ✅ 已完成功能
-- [x] OpenAI GPT-4 transcribe集成
+- [x] OpenAI GPT-4o transcribe集成 (180秒超时)
 - [x] 双处理器架构 (云端+本地)
-- [x] 音频存档系统
-- [x] 失败重试机制
-- [x] 状态显示优化
+- [x] 音频存档系统 + 转录缓存(cache.json)
+- [x] 智能重试机制 (多次失败循环重试)
+- [x] 状态显示优化 (0→1→!)
 - [x] 本地whisper.cpp支持
+- [x] 项目文档完善
 
 ### 🚧 正在开发  
-- [ ] Requirements文件优化 (.in/.txt分离)
 - [ ] 配置界面开发
 - [ ] Windows平台适配
 - [ ] 单元测试完善
+- [ ] 性能监控系统
 
 ### 📋 计划功能
 - [ ] 更多云端服务支持
