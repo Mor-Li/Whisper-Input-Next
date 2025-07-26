@@ -49,8 +49,8 @@
 
 1. **克隆项目**
 ```bash
-git clone https://github.com/Mor-Li/Whisper-Input.git
-cd Whisper-Input
+git clone https://github.com/Mor-Li/Whisper-Input-Next.git
+cd Whisper-Input-Next
 ```
 
 2. **创建虚拟环境**
@@ -203,8 +203,8 @@ OPTIMIZE_RESULT=false
 ### 开发环境设置
 ```bash
 # 克隆项目
-git clone https://github.com/Mor-Li/Whisper-Input.git
-cd Whisper-Input
+git clone https://github.com/Mor-Li/Whisper-Input-Next.git
+cd Whisper-Input-Next
 
 # 设置开发模式
 pip install -r requirements.txt
@@ -234,9 +234,9 @@ python -m pytest tests/
 
 ## 📞 联系方式
 
-- **项目地址**: https://github.com/Mor-Li/Whisper-Input  
-- **问题报告**: [Issues](https://github.com/Mor-Li/Whisper-Input/issues)
-- **功能建议**: [Discussions](https://github.com/Mor-Li/Whisper-Input/discussions)
+- **项目地址**: https://github.com/Mor-Li/Whisper-Input-Next  
+- **问题报告**: [Issues](https://github.com/Mor-Li/Whisper-Input-Next/issues)
+- **功能建议**: [Discussions](https://github.com/Mor-Li/Whisper-Input-Next/discussions)
 
 ---
 
