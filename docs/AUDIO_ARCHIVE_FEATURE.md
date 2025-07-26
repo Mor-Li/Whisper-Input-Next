@@ -1,117 +1,108 @@
-# 音频存档功能说明
+# Audio Archive Feature
 
-## 新增功能概述
+## Feature Overview
 
-本次更新为 Whisper-Input 项目添加了以下两个重要功能：
+Audio file preservation functionality for the Whisper-Input project:
 
-### 1. 音频文件保留功能 🎵
+### Audio File Archive 🎵
 
-- **功能描述**：现在所有录音文件都会被自动保存到 `audio_archive/` 目录中，不再立即删除
-- **文件命名**：使用时间戳格式 `recording_YYYYMMDD_HHMMSS.wav`
-- **数量管理**：自动保留最新的 5 个录音文件，超过数量时自动删除旧文件
-- **支持范围**：所有三种处理器（LocalWhisper、Groq Whisper、SiliconFlow）
+- **Description**: All recording files are automatically saved to `audio_archive/` directory
+- **File naming**: Timestamp format `recording_YYYYMMDD_HHMMSS.wav`
+- **Storage policy**: **Keep all files by default** (no automatic deletion)
+- **Support**: All three processors (LocalWhisper, Groq Whisper, SiliconFlow)
 
-### 2. 转录超时时间延长 ⏰
+### Extended Transcription Timeout ⏰
 
-- **原设置**：30秒超时限制
-- **新设置**：180秒（3分钟）超时限制
-- **适用范围**：主要针对本地 whisper.cpp 处理器，API处理器保持原有较短超时时间
+- **Previous**: 30-second timeout limit
+- **Current**: 180-second (3-minute) timeout limit
+- **Scope**: Primarily for local whisper.cpp processor
 
-## 技术实现细节
+## Technical Implementation
 
-### 音频存档功能
+### Audio Archive
 
-1. **目录创建**：程序启动时自动创建 `audio_archive/` 目录
-2. **文件保存**：每次录音后，原始音频数据会被保存到存档目录
-3. **数量控制**：使用文件修改时间排序，保留最新的5个文件
-4. **错误处理**：如果保存失败，不会影响正常的转录流程
+1. **Directory creation**: Auto-create `audio_archive/` directory on startup
+2. **File saving**: Original audio data saved to archive after each recording
+3. **Storage policy**: Keep all files, no automatic cleanup
+4. **Error handling**: Save failures don't affect normal transcription flow
 
-### 超时设置修改
+### Timeout Settings
 
-- **LocalWhisperProcessor**：`DEFAULT_TIMEOUT = 180`（3分钟）
-- **WhisperProcessor**：保持 `DEFAULT_TIMEOUT = 20`（20秒）
-- **SenseVoiceSmallProcessor**：保持 `DEFAULT_TIMEOUT = 20`（20秒）
+- **LocalWhisperProcessor**: `DEFAULT_TIMEOUT = 180` (3 minutes)
+- **WhisperProcessor**: `DEFAULT_TIMEOUT = 20` (20 seconds)
+- **SenseVoiceSmallProcessor**: `DEFAULT_TIMEOUT = 20` (20 seconds)
 
-## 使用方法
+## Usage
 
-### 正常使用
+### Normal Operation
 
-无需额外配置，功能会自动生效：
+No additional configuration needed:
 
-1. 启动程序：`python main.py` 或使用 `start.sh`
-2. 进行录音操作（使用任何快捷键）
-3. 录音文件会自动保存到 `audio_archive/` 目录
+1. Start program: `python main.py` or use `start.sh`
+2. Perform recordings (any hotkey)
+3. Audio files automatically saved to `audio_archive/`
 
-### 查看保存的录音
+### View Saved Recordings
 
 ```bash
-# 查看存档目录
+# View archive directory
 ls -la audio_archive/
 
-# 播放录音文件（macOS）
+# Play recording (macOS)
 afplay audio_archive/recording_20250724_220003.wav
 ```
 
-### 手动管理存档
+### Manual Archive Management
 
 ```bash
-# 清空所有存档（如果需要）
+# Clear all archives (if needed)
 rm -rf audio_archive/
 
-# 备份存档到其他位置
+# Backup archives
 cp -r audio_archive/ ~/backup_recordings/
+
+# Clean old files manually (optional)
+# Remove files older than 30 days
+find audio_archive/ -name "*.wav" -mtime +30 -delete
 ```
 
-## 配置说明
+## Configuration
 
-### .gitignore 更新
+### .gitignore Update
 
-已自动添加 `audio_archive/` 到 `.gitignore` 文件中，避免录音文件被意外提交到版本控制系统。
+`audio_archive/` automatically added to `.gitignore` to prevent accidental commits.
 
-### 存储空间考虑
+### Storage Considerations
 
-- 每个录音文件大小取决于录音时长（约 32KB/秒）
-- 保留5个文件的存储空间通常在 1-5MB 之间
-- 如需调整保留数量，可修改代码中的数字 `5`
+- Each recording file size depends on duration (~32KB/second)
+- No automatic limit - files accumulate over time
+- Manual cleanup recommended if storage becomes an issue
 
-## 故障排除
+## Troubleshooting
 
-### 如果存档目录未创建
+### Archive Directory Not Created
 
 ```bash
-# 手动创建目录
+# Manually create directory
 mkdir -p audio_archive
 ```
 
-### 如果出现权限问题
+### Permission Issues
 
 ```bash
-# 修复目录权限
+# Fix directory permissions
 chmod 755 audio_archive/
 ```
 
-### 如果需要调整保留文件数量
+## Version Compatibility
 
-在以下文件中修改数字 `5`：
-- `src/transcription/local_whisper.py`
-- `src/transcription/whisper.py`
-- `src/transcription/senseVoiceSmall.py`
+- ✅ Compatible with all existing features
+- ✅ No impact on original transcription flow
+- ✅ Backward compatible, safe to upgrade
 
-找到这行代码并修改数字：
-```python
-if len(wav_files) > 5:  # 修改这个数字
-```
+## Changelog
 
-## 版本兼容性
-
-- ✅ 兼容所有现有功能
-- ✅ 不影响原有的转录流程
-- ✅ 向后兼容，可安全升级
-
-## 更新日志
-
-- **2025-07-24**：
-  - 新增音频文件自动保存功能
-  - 将本地whisper.cpp超时时间从30秒延长到180秒
-  - 为所有处理器添加统一的存档管理功能
-  - 更新.gitignore以忽略音频存档目录 
+- **2025-07-25**:
+  - **BREAKING**: Changed from 5-file limit to keeping all files by default
+  - Removed automatic file cleanup for better data preservation
+  - Users can manually manage archives if needed 
