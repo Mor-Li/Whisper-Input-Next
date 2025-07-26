@@ -79,8 +79,8 @@ class KeyboardManager:
         except KeyError:
             logger.error(f"无效的翻译按钮配置：{translations_button}")
 
-        logger.info(f"按 {translations_button} + {transcriptions_button} 键：切换录音状态（普通模式）")
-        logger.info(f"按 {translations_button} + I 键：切换录音状态（Kimi润色模式）")
+        logger.info(f"按 {translations_button} + {transcriptions_button} 键：切换录音状态（OpenAI GPT-4 transcribe 模式）")
+        logger.info(f"按 {translations_button} + I 键：切换录音状态（本地 Whisper 模式）")
         logger.info(f"两种模式都是按一下开始，再按一下结束")
     
     @property
@@ -111,7 +111,7 @@ class KeyboardManager:
                 self.on_translate_start()
                 
             elif new_state == InputState.RECORDING_KIMI:
-                # Kimi润色录音状态
+                # 本地 Whisper 录音状态
                 self.temp_text_length = 0
                 self.type_temp_text(message)
                 self.on_kimi_start()
@@ -123,7 +123,7 @@ class KeyboardManager:
                 self.on_record_stop()
                 
             elif new_state == InputState.PROCESSING_KIMI:
-                # Kimi润色处理状态
+                # 本地 Whisper 处理状态
                 self._delete_previous_text()
                 self.type_temp_text(message)
                 self.processing_text = message
@@ -283,15 +283,15 @@ class KeyboardManager:
             if self.state.can_start_recording:
                 self.is_recording = True
                 self.state = InputState.RECORDING
-                logger.info("🎤 开始录音（toggle模式）")
+                logger.info("🎤 开始录音（OpenAI GPT-4 transcribe 模式）")
         else:
             # 停止录音
             self.is_recording = False
             self.state = InputState.PROCESSING
-            logger.info("⏹️ 停止录音（toggle模式）")
+            logger.info("⏹️ 停止录音（OpenAI GPT-4 transcribe 模式）")
     
     def toggle_kimi_recording(self):
-        """切换Kimi润色录音状态"""
+        """切换本地 Whisper 录音状态"""
         current_time = time.time()
         
         # 防抖处理
@@ -305,12 +305,12 @@ class KeyboardManager:
             if self.state.can_start_recording:
                 self.is_recording = True
                 self.state = InputState.RECORDING_KIMI
-                logger.info("🎤 开始录音（Kimi润色模式）")
+                logger.info("🎤 开始录音（本地 Whisper 模式）")
         else:
             # 停止录音
             self.is_recording = False
             self.state = InputState.PROCESSING_KIMI
-            logger.info("⏹️ 停止录音（Kimi润色模式）")
+            logger.info("⏹️ 停止录音（本地 Whisper 模式）")
 
     def on_press(self, key):
         """按键按下时的回调"""
@@ -333,10 +333,10 @@ class KeyboardManager:
                 # 特殊键
                 is_translation_key = key == self.translations_button
             
-            # 检查I键（用于Kimi润色模式）
+            # 检查I键（用于本地 Whisper 模式）
             if hasattr(key, 'char') and key.char == 'i':
                 self.i_pressed = True
-                # 检查是否同时按下了ctrl+i（Kimi润色模式）
+                # 检查是否同时按下了ctrl+i（本地 Whisper 模式）
                 if self.ctrl_pressed and self.i_pressed:
                     self.toggle_kimi_recording()
             elif is_transcription_key:  # F键
@@ -346,10 +346,10 @@ class KeyboardManager:
                     self.toggle_recording()
             elif is_translation_key:  # Ctrl键
                 self.ctrl_pressed = True
-                # 检查是否同时按下了ctrl+f（普通录音模式）
+                # 检查是否同时按下了ctrl+f（OpenAI GPT-4 transcribe 模式）
                 if self.ctrl_pressed and self.f_pressed:
                     self.toggle_recording()
-                # 检查是否同时按下了ctrl+i（Kimi润色模式）
+                # 检查是否同时按下了ctrl+i（本地 Whisper 模式）
                 elif self.ctrl_pressed and self.i_pressed:
                     self.toggle_kimi_recording()
         except AttributeError:

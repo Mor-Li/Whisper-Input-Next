@@ -11,7 +11,6 @@ from openai import OpenAI
 from opencc import OpenCC
 
 from ..llm.symbol import SymbolProcessor
-from ..llm.kimi import KimiProcessor
 from ..utils.logger import logger
 
 dotenv.load_dotenv()
@@ -51,8 +50,6 @@ class WhisperProcessor:
     DEFAULT_MODEL = None
     
     def __init__(self):
-        api_key = os.getenv("GROQ_API_KEY")
-        base_url = os.getenv("GROQ_BASE_URL")
         self.convert_to_simplified = os.getenv("CONVERT_TO_SIMPLIFIED", "false").lower() == "true"
         self.cc = OpenCC('t2s') if self.convert_to_simplified else None
         self.symbol = SymbolProcessor()
@@ -61,7 +58,16 @@ class WhisperProcessor:
         self.timeout_seconds = self.DEFAULT_TIMEOUT
         self.service_platform = os.getenv("SERVICE_PLATFORM", "groq").lower()
 
-        if self.service_platform == "groq":
+        if self.service_platform == "openai":
+            # OpenAI GPT-4 transcribe 配置
+            api_key = os.getenv("OFFICIAL_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+            assert api_key, "未设置 OFFICIAL_OPENAI_API_KEY 或 OPENAI_API_KEY 环境变量"
+            # 使用官方 OpenAI API，不设置自定义 base_url
+            self.client = OpenAI(api_key=api_key)
+            self.DEFAULT_MODEL = "gpt-4o-transcribe"
+        elif self.service_platform == "groq":
+            api_key = os.getenv("GROQ_API_KEY")
+            base_url = os.getenv("GROQ_BASE_URL")
             assert api_key, "未设置 GROQ_API_KEY 环境变量"
             self.client = OpenAI(
                 api_key=api_key,
@@ -69,15 +75,11 @@ class WhisperProcessor:
             )
             self.DEFAULT_MODEL = "whisper-large-v3-turbo"
         elif self.service_platform == "siliconflow":
+            api_key = os.getenv("GROQ_API_KEY")
             assert api_key, "未设置 SILICONFLOW_API_KEY 环境变量"
             self.DEFAULT_MODEL = "FunAudioLLM/SenseVoiceSmall"
         else:
             raise ValueError(f"未知的平台: {self.service_platform}")
-        
-        # 添加Kimi处理器
-        self.kimi_processor = KimiProcessor()
-        # 是否启用Kimi润色功能（默认关闭，通过快捷键动态控制）
-        self.enable_kimi_polish = os.getenv("ENABLE_KIMI_POLISH", "false").lower() == "true"
         
         # 创建音频存档目录
         self.audio_archive_dir = "audio_archive"
@@ -122,20 +124,38 @@ class WhisperProcessor:
     @timeout_decorator(10)
     def _call_whisper_api(self, mode, audio_data, prompt):
         """调用 Whisper API"""
-        if mode == "translations":
-            response = self.client.audio.translations.create(
-                model="whisper-large-v3",
-                response_format="text",
-                prompt=prompt,
-                file=("audio.wav", audio_data)
-            )
-        else:  # transcriptions
-            response = self.client.audio.transcriptions.create(
-                model="whisper-large-v3-turbo",
-                response_format="text",
-                prompt=prompt,
-                file=("audio.wav", audio_data)
-            )
+        if self.service_platform == "openai":
+            # OpenAI GPT-4 transcribe API
+            if mode == "translations":
+                response = self.client.audio.translations.create(
+                    model="gpt-4o-transcribe",
+                    response_format="text",
+                    prompt=prompt,
+                    file=("audio.wav", audio_data)
+                )
+            else:  # transcriptions
+                response = self.client.audio.transcriptions.create(
+                    model="gpt-4o-transcribe",
+                    response_format="text",
+                    prompt=prompt,
+                    file=("audio.wav", audio_data)
+                )
+        else:
+            # GROQ API
+            if mode == "translations":
+                response = self.client.audio.translations.create(
+                    model="whisper-large-v3",
+                    response_format="text",
+                    prompt=prompt,
+                    file=("audio.wav", audio_data)
+                )
+            else:  # transcriptions
+                response = self.client.audio.transcriptions.create(
+                    model="whisper-large-v3-turbo",
+                    response_format="text",
+                    prompt=prompt,
+                    file=("audio.wav", audio_data)
+                )
         return str(response).strip()
 
     def process_audio(self, audio_buffer, mode="transcriptions", prompt=""):
@@ -164,11 +184,8 @@ class WhisperProcessor:
             result = self._convert_traditional_to_simplified(result)
             logger.info(f"识别结果: {result}")
             
-            # 使用Kimi润色功能替代原有的标点符号和优化功能
-            if self.enable_kimi_polish and result:
-                result = self.kimi_processor.polish_text(result)
-            else:
-                # 如果未启用Kimi润色，则使用原有的处理方式
+            # OpenAI GPT-4 transcribe 自带标点符号，无需额外处理
+            if self.service_platform != "openai":
                 # 仅在 groq API 时添加标点符号
                 if self.service_platform == "groq" and self.add_symbol:
                     result = self.symbol.add_symbol(result)
