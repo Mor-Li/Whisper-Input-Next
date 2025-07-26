@@ -8,39 +8,39 @@ Audio file preservation functionality for the Whisper-Input project:
 
 - **Description**: All recording files are automatically saved to `audio_archive/` directory
 - **File naming**: Timestamp format `recording_YYYYMMDD_HHMMSS.wav`
-- **Storage policy**: **Keep all files by default** (no automatic deletion)
-- **Support**: All three processors (LocalWhisper, Groq Whisper, SiliconFlow)
+- **File management**: Keep all files by default, no automatic deletion
+- **Support range**: All three processors (LocalWhisper, Groq Whisper, SiliconFlow)
 
-### Extended Transcription Timeout ⏰
+### Extended Timeout for Local Processing ⏰
 
-- **Previous**: 30-second timeout limit
-- **Current**: 180-second (3-minute) timeout limit
-- **Scope**: Primarily for local whisper.cpp processor
+- **Previous setting**: 30 second timeout limit
+- **New setting**: 180 seconds (3 minutes) timeout limit
+- **Scope**: Mainly for local whisper.cpp processor, API processors keep original shorter timeout
 
 ## Technical Implementation
 
-### Audio Archive
+### Audio Archive Feature
 
-1. **Directory creation**: Auto-create `audio_archive/` directory on startup
+1. **Directory creation**: Automatically creates `audio_archive/` directory on startup
 2. **File saving**: Original audio data saved to archive after each recording
-3. **Storage policy**: Keep all files, no automatic cleanup
-4. **Error handling**: Save failures don't affect normal transcription flow
+3. **No file limits**: All recordings are preserved by default
+4. **Error handling**: Archive failures don't affect normal transcription flow
 
 ### Timeout Settings
 
 - **LocalWhisperProcessor**: `DEFAULT_TIMEOUT = 180` (3 minutes)
-- **WhisperProcessor**: `DEFAULT_TIMEOUT = 20` (20 seconds)
-- **SenseVoiceSmallProcessor**: `DEFAULT_TIMEOUT = 20` (20 seconds)
+- **WhisperProcessor**: Maintains `DEFAULT_TIMEOUT = 20` (20 seconds)
+- **SenseVoiceSmallProcessor**: Maintains `DEFAULT_TIMEOUT = 20` (20 seconds)
 
 ## Usage
 
-### Normal Operation
+### Normal Usage
 
-No additional configuration needed:
+No extra configuration needed, features work automatically:
 
 1. Start program: `python main.py` or use `start.sh`
 2. Perform recordings (any hotkey)
-3. Audio files automatically saved to `audio_archive/`
+3. Recording files automatically saved to `audio_archive/` directory
 
 ### View Saved Recordings
 
@@ -58,36 +58,32 @@ afplay audio_archive/recording_20250724_220003.wav
 # Clear all archives (if needed)
 rm -rf audio_archive/
 
-# Backup archives
+# Backup archives to another location
 cp -r audio_archive/ ~/backup_recordings/
-
-# Clean old files manually (optional)
-# Remove files older than 30 days
-find audio_archive/ -name "*.wav" -mtime +30 -delete
 ```
 
 ## Configuration
 
 ### .gitignore Update
 
-`audio_archive/` automatically added to `.gitignore` to prevent accidental commits.
+Automatically added `audio_archive/` to `.gitignore` file to prevent recording files from being accidentally committed to version control.
 
 ### Storage Considerations
 
 - Each recording file size depends on duration (~32KB/second)
-- No automatic limit - files accumulate over time
-- Manual cleanup recommended if storage becomes an issue
+- No automatic file cleanup means storage grows over time
+- Users can manually manage archives as needed
 
 ## Troubleshooting
 
-### Archive Directory Not Created
+### If archive directory not created
 
 ```bash
 # Manually create directory
 mkdir -p audio_archive
 ```
 
-### Permission Issues
+### If permission issues occur
 
 ```bash
 # Fix directory permissions
@@ -105,4 +101,4 @@ chmod 755 audio_archive/
 - **2025-07-25**:
   - **BREAKING**: Changed from 5-file limit to keeping all files by default
   - Removed automatic file cleanup for better data preservation
-  - Users can manually manage archives if needed 
+  - Users can manually manage archives if needed

@@ -2,6 +2,8 @@ import os
 import threading
 import time
 from functools import wraps
+import glob
+from datetime import datetime
 
 import dotenv
 import httpx
@@ -109,7 +111,6 @@ class WhisperProcessor:
             logger.error(f"保存音频文件到存档失败: {e}")
             return None
 
-
     def _convert_traditional_to_simplified(self, text):
         """将繁体中文转换为简体中文"""
         if not self.convert_to_simplified or not text:
@@ -150,6 +151,9 @@ class WhisperProcessor:
         """
         try:
             start_time = time.time()
+
+            # 首先保存音频到存档（保留原始录音）
+            archive_path = self._save_audio_to_archive(audio_buffer)
 
             logger.info(f"正在调用 Whisper API... (模式: {mode})")
             result = self._call_whisper_api(mode, audio_buffer, prompt)

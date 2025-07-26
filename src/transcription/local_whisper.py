@@ -5,6 +5,8 @@ import tempfile
 import threading
 import time
 from functools import wraps
+import glob
+from datetime import datetime
 
 import dotenv
 
@@ -45,7 +47,7 @@ def timeout_decorator(seconds):
 
 class LocalWhisperProcessor:
     # 类级别的配置参数
-    DEFAULT_TIMEOUT = 30  # 本地处理可能需要更长时间
+    DEFAULT_TIMEOUT = 180  # 修改为180秒（3分钟）
     
     def __init__(self):
         # 从环境变量获取whisper.cpp路径和模型路径
@@ -119,7 +121,7 @@ class LocalWhisperProcessor:
         finally:
             temp_file.close()
 
-    @timeout_decorator(30)
+    @timeout_decorator(180)  # 修改为180秒（3分钟）
     def _call_whisper_cpp(self, wav_file):
         """调用本地whisper.cpp进行转录"""
         # 创建临时文件作为输出前缀
@@ -226,7 +228,10 @@ class LocalWhisperProcessor:
             
             logger.info(f"正在使用本地 whisper.cpp 处理音频... (模式: {mode})")
             
-            # 保存音频到临时文件
+            # 首先保存音频到存档（保留原始录音）
+            archive_path = self._save_audio_to_archive(audio_buffer)
+            
+            # 保存音频到临时文件用于处理
             wav_file = self._save_audio_to_temp_file(audio_buffer)
             
             # 调用whisper.cpp进行转录
@@ -256,10 +261,11 @@ class LocalWhisperProcessor:
             logger.error(f"本地音频处理错误: {str(e)}", exc_info=True)
             return None, error_msg
         finally:
-            # 清理临时WAV文件
+            # 清理临时WAV文件（注意：这里只删除用于处理的临时文件，不删除存档文件）
             if wav_file and os.path.exists(wav_file):
                 try:
                     os.unlink(wav_file)
+                    logger.debug(f"清理临时处理文件: {wav_file}")
                 except Exception as e:
                     logger.warning(f"清理临时WAV文件失败: {e}")
             
