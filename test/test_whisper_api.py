@@ -171,7 +171,7 @@ if __name__ == "__main__":
     main() 
     
 # 正常的输出如下：
-# (base) limo@limos-MacBook-Pro ~/Documents/GithubRepo/Whisper-Input ➜ git:(main) [04-20 17:42:46] python test_whisper_api.py
+# (base) limo@limos-MacBook-Pro ~/Documents/GithubRepo/Whisper-Input-Next ➜ git:(main) [04-20 17:42:46] python test_whisper_api.py
 # 🔍 Whisper API 测试工具
 # ==================================================
 

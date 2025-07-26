@@ -1,4 +1,4 @@
-# Whisper-Input - Enhanced Voice Transcription Tool
+# Whisper-Input-Next - Enhanced Voice Transcription Tool
 
 <p align="center">
   <img src="docs/whisper_claudecode.png" alt="项目海报" />
