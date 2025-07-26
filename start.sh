@@ -59,7 +59,7 @@ tmux send-keys -t whisper-input "export WHISPER_MODEL_PATH=\"models/ggml-large-v
 
 # Kimi润色功能通过快捷键控制：
 # - Ctrl + F：普通转录模式（不润色）
-# - Ctrl + Y：Kimi润色模式（自动润色）
+# - Ctrl + I：Kimi润色模式（自动润色）
 # KIMI_API_KEY 已在 .env 文件中配置，load_dotenv() 会自动加载
 
 # 启动应用程序并同时将输出保存到日志文件

@@ -11,7 +11,7 @@ class KeyboardManager:
         self.keyboard = Controller()
         self.ctrl_pressed = False  # 改为ctrl键状态
         self.f_pressed = False  # F键状态
-        self.y_pressed = False  # Y键状态
+        self.i_pressed = False  # I键状态
         self.temp_text_length = 0  # 用于跟踪临时文本的长度
         self.processing_text = None  # 用于跟踪正在处理的文本
         self.error_message = None  # 用于跟踪错误信息
@@ -80,7 +80,7 @@ class KeyboardManager:
             logger.error(f"无效的翻译按钮配置：{translations_button}")
 
         logger.info(f"按 {translations_button} + {transcriptions_button} 键：切换录音状态（普通模式）")
-        logger.info(f"按 {translations_button} + Y 键：切换录音状态（Kimi润色模式）")
+        logger.info(f"按 {translations_button} + I 键：切换录音状态（Kimi润色模式）")
         logger.info(f"两种模式都是按一下开始，再按一下结束")
     
     @property
@@ -333,11 +333,11 @@ class KeyboardManager:
                 # 特殊键
                 is_translation_key = key == self.translations_button
             
-            # 检查Y键（用于Kimi润色模式）
-            if hasattr(key, 'char') and key.char == 'y':
-                self.y_pressed = True
-                # 检查是否同时按下了ctrl+y（Kimi润色模式）
-                if self.ctrl_pressed and self.y_pressed:
+            # 检查I键（用于Kimi润色模式）
+            if hasattr(key, 'char') and key.char == 'i':
+                self.i_pressed = True
+                # 检查是否同时按下了ctrl+i（Kimi润色模式）
+                if self.ctrl_pressed and self.i_pressed:
                     self.toggle_kimi_recording()
             elif is_transcription_key:  # F键
                 self.f_pressed = True
@@ -349,8 +349,8 @@ class KeyboardManager:
                 # 检查是否同时按下了ctrl+f（普通录音模式）
                 if self.ctrl_pressed and self.f_pressed:
                     self.toggle_recording()
-                # 检查是否同时按下了ctrl+y（Kimi润色模式）
-                elif self.ctrl_pressed and self.y_pressed:
+                # 检查是否同时按下了ctrl+i（Kimi润色模式）
+                elif self.ctrl_pressed and self.i_pressed:
                     self.toggle_kimi_recording()
         except AttributeError:
             pass
@@ -376,9 +376,9 @@ class KeyboardManager:
                 # 特殊键
                 is_translation_key = key == self.translations_button
                 
-            # 检查Y键释放
-            if hasattr(key, 'char') and key.char == 'y':
-                self.y_pressed = False
+            # 检查I键释放
+            if hasattr(key, 'char') and key.char == 'i':
+                self.i_pressed = False
             elif is_transcription_key:  # F键释放
                 self.f_pressed = False
             elif is_translation_key:  # Ctrl键释放
@@ -402,7 +402,7 @@ class KeyboardManager:
         # 重置状态标志
         self.ctrl_pressed = False
         self.f_pressed = False
-        self.y_pressed = False
+        self.i_pressed = False
         self.is_recording = False
         self.last_key_time = 0
         self.processing_text = None

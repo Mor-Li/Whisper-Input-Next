@@ -15,7 +15,7 @@ Whisper Input 是受到即友[FeiTTT](https://web.okjike.com/u/DB98BE7A-9DBB-473
 | -------------- | ------------------------------- |
 | 多语言语音转译 | Ctrl + F                        |
 | 中文翻译为英文 | Shift + Option 或者 Shift + Alt |
-| Kimi 润色模式  | Ctrl + Y                        |
+| Kimi 润色模式  | Ctrl + I                        |
 
 ## 新增功能
 
@@ -24,7 +24,7 @@ Whisper Input 是受到即友[FeiTTT](https://web.okjike.com/u/DB98BE7A-9DBB-473
 - **文本优化**：修正识别错误，提升文本可读性
 - **双快捷键模式**：
   - `Ctrl + F`：普通转录模式（不使用润色）
-  - `Ctrl + Y`：Kimi 润色模式（自动润色优化）
+  - `Ctrl + I`：Kimi 润色模式（自动润色优化）
 - **多平台支持**：支持本地 Whisper、GROQ、SiliconFlow 三种模式
 
 查看[视频效果演示](https://img.erlich.fun/personal-blog/uPic/WhisperInputV02_compressed.mp4)
@@ -262,7 +262,7 @@ python test_kimi_api.py
 > 2. 集成到所有三个语音处理器（Local Whisper、GROQ Whisper、SiliconFlow）
 > 3. **新增双快捷键模式**：
 >    - `Ctrl + F`：普通转录模式（不使用润色）
->    - `Ctrl + Y`：Kimi 润色模式（自动润色优化）
+>    - `Ctrl + I`：Kimi 润色模式（自动润色优化）
 > 4. 添加 Kimi API 测试脚本和详细使用文档
 > 5. 优化用户体验，可根据需要选择是否使用润色功能
 
