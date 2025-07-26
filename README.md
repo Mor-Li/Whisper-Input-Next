@@ -1,14 +1,26 @@
 # Whisper-Input - Enhanced Voice Transcription Tool
 
-[![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)](./VERSION)
-[![Python](https://img.shields.io/badge/python-3.12+-green.svg)](https://www.python.org/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+<p align="center">
+  <img src="docs/whisper_claudecode.png" alt="项目海报" />
+</p>
+
+<p align="center">
+  <a href="./VERSION">
+    <img src="https://img.shields.io/badge/version-3.0.0-blue.svg" alt="Version" />
+  </a>
+  <a href="https://www.python.org/">
+    <img src="https://img.shields.io/badge/python-3.12+-green.svg" alt="Python" />
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" />
+  </a>
+</p>
 
 一个基于语音转录的智能输入工具，支持多种转录服务和高质量的语音识别功能。
 
 ## 🚀 项目背景
 
-本项目基于 [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/Whisper-Input) 进行二次开发。原项目已停止维护数月，我们在其基础上进行了大量功能扩展和架构优化，添加了OpenAI GPT-4o transcribe集成、音频存档、本地whisper支持等重要功能。
+本项目基于 [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/Whisper-Input) 进行二次开发。原项目已停止维护数月，我们在其基础上进行了大量功能扩展和架构优化，添加了OpenAI GPT-4o transcribe集成、音频存档、本地whisper支持等重要功能。[为什么要用这个项目？](./docs/[V3.0.0]_知乎blog.md)
 
 ## ✨ 主要特性
 
