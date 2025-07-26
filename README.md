@@ -72,7 +72,7 @@ cd ..
 
 5. **配置环境变量**
 ```bash
-cp .env.example .env
+cp env.example .env
 # 编辑 .env 文件，配置必要参数:
 # - OFFICIAL_OPENAI_API_KEY: OpenAI API密钥 (必需)
 # - WHISPER_CLI_PATH: whisper.cpp可执行文件路径 (使用本地转录时必需)

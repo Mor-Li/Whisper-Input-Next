@@ -69,7 +69,7 @@ Whisper Input 是受到即友[FeiTTT](https://web.okjike.com/u/DB98BE7A-9DBB-473
 
 5. 重命名 `.env` 文件
     ```bash
-    cp .env.example .env
+    cp env.example .env
     ```
 
 6. 配置 `.env` 文件，设置本地whisper.cpp路径：
@@ -119,7 +119,7 @@ Whisper Input 是受到即友[FeiTTT](https://web.okjike.com/u/DB98BE7A-9DBB-473
 
 5. 重命名 `.env` 文件
     ```bash
-    cp .env.example .env
+    cp env.example .env
     ```
 
 6. 粘贴在第 2 步复制的 API KEY 到 `.env`  文件，效果类似
@@ -164,7 +164,7 @@ Whisper Input 是受到即友[FeiTTT](https://web.okjike.com/u/DB98BE7A-9DBB-473
 
 5. 重命名 `.env` 文件
     ```bash
-    cp .env.example .env
+    cp env.example .env
     ```
 
 6. 粘贴在第 2 步复制的 API KEY 到 `.env`  文件，效果类似
