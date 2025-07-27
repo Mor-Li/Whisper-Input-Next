@@ -11,10 +11,57 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import dotenv
+import tempfile
+import subprocess
 from src.transcription.whisper import WhisperProcessor
 from src.utils.logger import logger
 
 dotenv.load_dotenv()
+
+def convert_to_wav(input_path):
+    """将音频文件转换为WAV格式"""
+    file_ext = os.path.splitext(input_path)[1].lower()
+    
+    if file_ext == '.wav':
+        return input_path
+    
+    print(f"🔄 检测到 {file_ext} 格式，正在转换为 WAV...")
+    
+    # 创建临时WAV文件
+    temp_wav = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
+    temp_wav.close()
+    
+    try:
+        # 使用ffmpeg转换
+        cmd = [
+            'ffmpeg', '-i', input_path, 
+            '-acodec', 'pcm_s16le',  # 16-bit PCM
+            '-ar', '16000',          # 16kHz采样率
+            '-ac', '1',              # 单声道
+            '-y',                    # 覆盖输出文件
+            temp_wav.name
+        ]
+        
+        print(f"🔧 转换命令: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"❌ FFmpeg转换失败:")
+            print(f"stdout: {result.stdout}")
+            print(f"stderr: {result.stderr}")
+            return None
+        
+        print(f"✅ 转换成功: {temp_wav.name}")
+        return temp_wav.name
+        
+    except FileNotFoundError:
+        print("❌ 未找到 ffmpeg，请先安装 ffmpeg")
+        print("macOS: brew install ffmpeg")
+        print("Ubuntu: sudo apt install ffmpeg")
+        return None
+    except Exception as e:
+        print(f"❌ 转换过程中发生错误: {e}")
+        return None
 
 def test_audio_transcription(audio_path):
     """测试指定音频文件的转录功能"""
@@ -26,9 +73,16 @@ def test_audio_transcription(audio_path):
     print(f"🎵 测试音频文件: {audio_path}")
     print(f"📏 文件大小: {os.path.getsize(audio_path)} bytes")
     
+    # 转换音频格式
+    wav_path = convert_to_wav(audio_path)
+    if not wav_path:
+        return False
+    
     # 设置为OpenAI模式进行测试
     original_platform = os.environ.get("SERVICE_PLATFORM")
     os.environ["SERVICE_PLATFORM"] = "openai"
+    
+    temp_created = wav_path != audio_path  # 是否创建了临时文件
     
     try:
         # 创建OpenAI处理器
@@ -38,7 +92,7 @@ def test_audio_transcription(audio_path):
         
         # 读取音频文件并转录
         print(f"\n🚀 开始转录...")
-        with open(audio_path, 'rb') as f:
+        with open(wav_path, 'rb') as f:
             import io
             audio_buffer = io.BytesIO(f.read())
             
@@ -64,6 +118,14 @@ def test_audio_transcription(audio_path):
         print(f"💥 测试过程中发生错误: {e}")
         return False
     finally:
+        # 清理临时文件
+        if temp_created and os.path.exists(wav_path):
+            try:
+                os.unlink(wav_path)
+                print(f"🧹 清理临时文件: {wav_path}")
+            except Exception as e:
+                print(f"⚠️  清理临时文件失败: {e}")
+        
         # 恢复原始环境变量
         if original_platform:
             os.environ["SERVICE_PLATFORM"] = original_platform
