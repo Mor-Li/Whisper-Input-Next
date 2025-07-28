@@ -16,7 +16,7 @@ from src.transcription.local_whisper import LocalWhisperProcessor
 # 版本信息
 __version__ = "3.0.0"
 __author__ = "Mor-Li"
-__description__ = "Enhanced Voice Transcription Tool with OpenAI GPT-4 Transcribe"
+__description__ = "Enhanced Voice Transcription Tool with OpenAI GPT-4o Transcribe"
 
 
 def check_microphone_permissions():

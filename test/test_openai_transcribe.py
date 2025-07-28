@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-测试 OpenAI GPT-4 Transcribe API
+测试 OpenAI GPT-4o Transcribe API
 使用 audio_archive 中的音频文件进行转录测试
 """
 
@@ -115,7 +115,7 @@ def test_different_models():
             print(f"❌ {model} 调用失败: {str(e)}")
 
 if __name__ == "__main__":
-    print("🔧 OpenAI GPT-4 Transcribe API 测试")
+    print("🔧 OpenAI GPT-4o Transcribe API 测试")
     print("=" * 50)
     
     # 基础测试

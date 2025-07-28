@@ -79,7 +79,7 @@ class KeyboardManager:
         except KeyError:
             logger.error(f"无效的翻译按钮配置：{translations_button}")
 
-        logger.info(f"按 {translations_button} + {transcriptions_button} 键：切换录音状态（OpenAI GPT-4 transcribe 模式）")
+        logger.info(f"按 {translations_button} + {transcriptions_button} 键：切换录音状态（OpenAI GPT-4o transcribe 模式）")
         logger.info(f"按 {translations_button} + I 键：切换录音状态（本地 Whisper 模式）")
         logger.info(f"两种模式都是按一下开始，再按一下结束")
     
@@ -283,12 +283,12 @@ class KeyboardManager:
             if self.state.can_start_recording:
                 self.is_recording = True
                 self.state = InputState.RECORDING
-                logger.info("🎤 开始录音（OpenAI GPT-4 transcribe 模式）")
+                logger.info("🎤 开始录音（OpenAI GPT-4o transcribe 模式）")
         else:
             # 停止录音
             self.is_recording = False
             self.state = InputState.PROCESSING
-            logger.info("⏹️ 停止录音（OpenAI GPT-4 transcribe 模式）")
+            logger.info("⏹️ 停止录音（OpenAI GPT-4o transcribe 模式）")
     
     def toggle_kimi_recording(self):
         """切换本地 Whisper 录音状态"""
@@ -346,7 +346,7 @@ class KeyboardManager:
                     self.toggle_recording()
             elif is_translation_key:  # Ctrl键
                 self.ctrl_pressed = True
-                # 检查是否同时按下了ctrl+f（OpenAI GPT-4 transcribe 模式）
+                # 检查是否同时按下了ctrl+f（OpenAI GPT-4o transcribe 模式）
                 if self.ctrl_pressed and self.f_pressed:
                     self.toggle_recording()
                 # 检查是否同时按下了ctrl+i（本地 Whisper 模式）
