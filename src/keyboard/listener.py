@@ -237,6 +237,10 @@ class KeyboardManager:
     def _delete_previous_text(self):
         """删除之前输入的临时文本"""
         if self.temp_text_length > 0:
+            # 添加0.2秒延迟，让删除操作更自然
+            import time
+            time.sleep(0.2)
+            
             for _ in range(self.temp_text_length):
                 self.keyboard.press(Key.backspace)
                 self.keyboard.release(Key.backspace)
