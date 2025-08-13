@@ -47,6 +47,20 @@ class VoiceAssistant:
             on_kimi_stop=self.stop_local_recording,
             on_reset_state=self.reset_state
         )
+        # 设置自动停止录音的回调
+        self.audio_recorder.set_auto_stop_callback(self._handle_auto_stop)
+    
+    def _handle_auto_stop(self):
+        """处理自动停止录音的情况"""
+        logger.warning("⏰ 录音时间已达到最大限制，自动中止录音！")
+        
+        # 中止录音（不进行转录）
+        self.audio_recorder.stop_recording(abort=True)
+        
+        # 重置键盘状态
+        self.keyboard_manager.reset_state()
+        
+        logger.info("💡 录音已中止，状态已重置")
     
     def start_openai_recording(self):
         """开始录音（OpenAI GPT-4o transcribe模式 - Ctrl+F）"""
