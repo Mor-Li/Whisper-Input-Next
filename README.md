@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="./VERSION">
-    <img src="https://img.shields.io/badge/version-3.0.0-blue.svg" alt="Version" />
+    <img src="https://img.shields.io/badge/version-3.1.0-blue.svg" alt="Version" />
   </a>
   <a href="https://www.python.org/">
     <img src="https://img.shields.io/badge/python-3.12+-green.svg" alt="Python" />
@@ -196,6 +196,11 @@ The program displays concise status indicators at the cursor position during run
 - [x] Dual processor architecture
 - [x] Smart retry mechanism
 - [x] Project documentation improvement
+- [x] 10-minute recording limit protection
+- [x] Status indicator delay optimization
+- [x] Audio format conversion support (m4a to wav)
+- [x] Bilingual documentation system
+- [x] GPT-4o terminology standardization
 
 ### 🚧 In Development  
 *No features currently in development*
