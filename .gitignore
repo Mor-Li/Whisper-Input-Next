@@ -40,3 +40,6 @@ audio_archive/
 audio_archive/cache.json
 
 .claude
+
+# 忽略 trash 目录
+trash/

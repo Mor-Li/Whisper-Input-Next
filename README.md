@@ -208,6 +208,12 @@ The program displays concise status indicators at the cursor position during run
 ### 📋 Planned Features
 *No features currently planned*
 
+### 🧪 Experimental Features History
+
+#### iOS Keyboard Extension Experiment (August 14, 2025)
+**Status**: ❌ Discontinued due to Apple's restrictions  
+Attempted to create iOS keyboard extension but discovered that even Sogou Input Method cannot directly record audio in keyboard extensions due to Apple's system limitations. iOS voice input is currently not feasible as a seamless keyboard extension.
+
 ## 🤝 Contributing Guidelines
 
 We welcome all forms of contributions! Whether it's:
