@@ -147,6 +147,17 @@ OPTIMIZE_RESULT=false
 - 这是我们推荐和测试最充分的配置
 - 其他单平台配置（groq、siliconflow等）仅作兼容性保留
 
+### 便捷启动别名设置 (推荐)
+
+在shell配置文件中添加以下别名 (`~/.bashrc`、`~/.zshrc` 等)：
+
+```bash
+alias whisper_input='cd /path/to/Whisper-Input-Next && ./start.sh'
+alias whisper_input_off='tmux kill-session -t whisper-input'
+```
+
+请将 `/path/to/Whisper-Input-Next` 替换为你的项目实际路径。
+
 ### 快捷键说明
 
 | 快捷键 | 功能 | 服务 | 特点 |

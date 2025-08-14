@@ -152,6 +152,17 @@ OPTIMIZE_RESULT=false
 - This is our recommended and most thoroughly tested configuration
 - Other single-platform configurations (groq, siliconflow, etc.) are maintained for compatibility only
 
+### Quick Start with Aliases (Recommended)
+
+Add these aliases to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
+
+```bash
+alias whisper_input='cd /path/to/Whisper-Input-Next && ./start.sh'
+alias whisper_input_off='tmux kill-session -t whisper-input'
+```
+
+Replace `/path/to/Whisper-Input-Next` with your actual project path.
+
 ### Hotkey Instructions
 
 | Hotkey | Function | Service | Features |
