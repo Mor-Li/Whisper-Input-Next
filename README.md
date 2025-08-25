@@ -243,7 +243,7 @@ git clone https://github.com/Mor-Li/Whisper-Input-Next.git
 cd Whisper-Input-Next
 
 # Create development environment
-python -m .venv .venv
+python -m venv .venv
 source .venv/bin/activate
 
 # Install dependencies

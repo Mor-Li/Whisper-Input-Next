@@ -28,16 +28,16 @@ if tmux has-session -t Whisper-Input-Next 2>/dev/null; then
 fi
 
 # 创建虚拟环境(如果不存在)
-if [ ! -d "venv" ]; then
+if [ ! -d ".venv" ]; then
   echo "🐍 创建虚拟环境..."
-  python -m venv venv
+  python -m venv .venv
   echo "✅ 虚拟环境创建完成"
 fi
 
 # 检查依赖是否已安装
-if [ ! -f "venv/pyvenv.cfg" ] || [ ! -f "venv/lib/python*/site-packages/openai" ]; then
+if [ ! -f ".venv/pyvenv.cfg" ] || [ ! -f "venv/lib/python*/site-packages/openai" ]; then
   echo "📦 安装项目依赖..."
-  source venv/bin/activate
+  source .venv/bin/activate
   pip install -r requirements.txt
   echo "✅ 依赖安装完成"
 fi
