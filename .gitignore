@@ -9,7 +9,7 @@
 __pycache__/
 
 # 忽略 venv 目录
-venv/
+.venv/
 
 # 忽略 macos 的 .DS_Store 文件
 .DS_Store

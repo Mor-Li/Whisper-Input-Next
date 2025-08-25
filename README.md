@@ -63,9 +63,9 @@ cd Whisper-Input-Next
 
 2. **Create Virtual Environment**
 ```bash
-python -m venv venv
-source venv/bin/activate  # macOS/Linux
-# or venv\\Scripts\\activate  # Windows
+python -m .venv .venv
+source .venv/bin/activate  # macOS/Linux
+# or .venv\\Scripts\\activate  # Windows
 ```
 
 3. **Install Dependencies**
@@ -243,8 +243,8 @@ git clone https://github.com/Mor-Li/Whisper-Input-Next.git
 cd Whisper-Input-Next
 
 # Create development environment
-python -m venv venv
-source venv/bin/activate
+python -m .venv .venv
+source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
