@@ -49,7 +49,7 @@ tmux new-session -d -s Whisper-Input-Next
 tmux send-keys -t Whisper-Input-Next "cd $(pwd)" C-m
 
 # 激活虚拟环境
-tmux send-keys -t Whisper-Input-Next "source venv/bin/activate" C-m
+tmux send-keys -t Whisper-Input-Next "source .venv/bin/activate" C-m
 
 # 启动应用程序并同时将输出保存到日志文件
 echo "🎙️  启动语音转录服务..."
