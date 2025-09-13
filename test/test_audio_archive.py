@@ -8,6 +8,7 @@ Usage: python test_audio_archive.py [audio_file_path]
 
 import sys
 import os
+import glob
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import dotenv
@@ -17,6 +18,31 @@ from src.transcription.whisper import WhisperProcessor
 from src.utils.logger import logger
 
 dotenv.load_dotenv()
+
+def get_latest_audio_file(audio_dir="audio_archive"):
+    """从指定目录获取最新的音频文件"""
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    audio_archive_path = os.path.join(project_root, audio_dir)
+    
+    if not os.path.exists(audio_archive_path):
+        print(f"❌ 音频存档目录不存在: {audio_archive_path}")
+        return None
+    
+    # 查找所有音频文件
+    audio_patterns = ['*.wav', '*.mp3', '*.m4a', '*.flac', '*.ogg']
+    audio_files = []
+    
+    for pattern in audio_patterns:
+        audio_files.extend(glob.glob(os.path.join(audio_archive_path, pattern)))
+    
+    if not audio_files:
+        print(f"❌ 在 {audio_archive_path} 中未找到音频文件")
+        return None
+    
+    # 按修改时间排序，获取最新的文件
+    latest_file = max(audio_files, key=os.path.getmtime)
+    print(f"🎵 找到最新音频文件: {os.path.basename(latest_file)}")
+    return latest_file
 
 def convert_to_wav(input_path):
     """将音频文件转换为WAV格式"""
@@ -140,14 +166,16 @@ def main():
     # 获取音频文件路径
     if len(sys.argv) > 1:
         audio_path = sys.argv[1]
+        # 如果路径不是绝对路径，则相对于项目根目录
+        if not os.path.isabs(audio_path):
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            audio_path = os.path.join(project_root, audio_path)
     else:
-        # 默认使用你指定的音频文件
-        audio_path = "audio_archive/recording_20250727_024821.wav"
-    
-    # 如果路径不是绝对路径，则相对于项目根目录
-    if not os.path.isabs(audio_path):
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        audio_path = os.path.join(project_root, audio_path)
+        # 默认使用audio_archive目录下最新的音频文件
+        audio_path = get_latest_audio_file()
+        if not audio_path:
+            print("❌ 未找到可用的音频文件")
+            return 1
     
     success = test_audio_transcription(audio_path)
     
