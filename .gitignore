@@ -43,3 +43,4 @@ audio_archive/cache.json
 
 # 忽略 trash 目录
 trash/
+report/
