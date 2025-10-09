@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
+from AppKit import NSImageOnly, NSImageScaleProportionallyDown
 from Cocoa import (
     NSApplication,
     NSApplicationActivationPolicyProhibited,
@@ -30,16 +31,14 @@ class _StateVisual:
 _STATE_VISUALS = {
     InputState.IDLE: _StateVisual("🎙️", "空闲", "IDLE"),
     InputState.RECORDING: _StateVisual("🔴", "录音中 (OpenAI)", "RECORDING"),
-    InputState.RECORDING_TRANSLATE: _StateVisual("🔴", "录音中 (翻译)", "RECORDING_TRANSLATE"),
-    InputState.RECORDING_KIMI: _StateVisual("🟠", "录音中 (本地 Whisper)", "RECORDING_KIMI"),
-    InputState.PROCESSING: _StateVisual("🔵", "转录中 (OpenAI)", "PROCESSING"),
-    InputState.PROCESSING_KIMI: _StateVisual("🔵", "转录中 (本地 Whisper)", "PROCESSING_KIMI"),
-    InputState.TRANSLATING: _StateVisual("🟡", "翻译中", "TRANSLATING"),
-    InputState.WARNING: _StateVisual("⚠️", "警告", "WARNING"),
-    InputState.ERROR: _StateVisual("❗️", "错误", "ERROR"),
+    InputState.RECORDING_TRANSLATE: _StateVisual("🔴", "录音中 (翻译)", "RECORDING"),
+    InputState.RECORDING_KIMI: _StateVisual("🟠", "录音中 (本地 Whisper)", "RECORDING"),
+    InputState.PROCESSING: _StateVisual("🔵", "转录处理中", "PROCESSING"),
+    InputState.PROCESSING_KIMI: _StateVisual("🔵", "转录处理中", "PROCESSING"),
+    InputState.TRANSLATING: _StateVisual("🟡", "翻译中", "PROCESSING"),
+    InputState.WARNING: _StateVisual("⚠️", "警告", "PROCESSING"),
+    InputState.ERROR: _StateVisual("❗️", "错误", "PROCESSING"),
 }
-
-_RETRY_VISUAL = _StateVisual("🔁", "等待重试，请按 Ctrl+F 继续", "RETRY")
 
 
 class StatusBarController:
@@ -50,7 +49,6 @@ class StatusBarController:
         self._menu = None
         self._current_state: InputState = InputState.IDLE
         self._queue_length: int = 0
-        self._awaiting_retry: bool = False
 
         self._custom_icons: Dict[str, NSImage] = {}
         self._load_custom_icons()
@@ -65,7 +63,6 @@ class StatusBarController:
         state: InputState,
         *,
         queue_length: int = 0,
-        awaiting_retry: bool = False,
     ) -> None:
         """更新状态显示"""
 
@@ -74,7 +71,6 @@ class StatusBarController:
         def _apply() -> None:
             self._current_state = state
             self._queue_length = queue_length
-            self._awaiting_retry = awaiting_retry
             self._refresh()
 
         AppHelper.callAfter(_apply)
@@ -114,19 +110,20 @@ class StatusBarController:
         title, image, tooltip = self._icon_and_tooltip()
 
         if image is not None:
+            image.setSize_((18.0, 18.0))
             button.setImage_(image)
             button.setTitle_(title)
+            button.setImageScaling_(NSImageScaleProportionallyDown)
+            button.setImagePosition_(NSImageOnly)
         else:
             button.setImage_(None)
             button.setTitle_(title)
+            button.setImagePosition_(0)
 
         button.setToolTip_(tooltip)
 
     def _icon_and_tooltip(self) -> Tuple[str, Optional[NSImage], str]:
-        if self._awaiting_retry:
-            visual = _RETRY_VISUAL
-        else:
-            visual = _STATE_VISUALS.get(self._current_state, _STATE_VISUALS[InputState.IDLE])
+        visual = _STATE_VISUALS.get(self._current_state, _STATE_VISUALS[InputState.IDLE])
 
         image = self._custom_icons.get(visual.env_key)
         title = ""
@@ -146,17 +143,36 @@ class StatusBarController:
         return title, image, tooltip
 
     def _load_custom_icons(self) -> None:
-        template_flag = os.getenv("STATUS_ICON_TEMPLATE", "true").lower() == "true"
+        template_flag = os.getenv("STATUS_ICON_TEMPLATE", "false").lower() == "true"
+
+        base_dir = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "assets", "icons")
+        )
+
+        def _resolve_path(env_key: str) -> Optional[str]:
+            env_path = os.getenv(f"STATUS_ICON_{env_key}")
+            if env_path:
+                return env_path
+            default_name = {
+                "IDLE": "idle.png",
+                "RECORDING": "recording.png",
+                "PROCESSING": "transcripting.png",
+            }.get(env_key)
+            if not default_name:
+                return None
+            return os.path.join(base_dir, default_name)
 
         def _try_load(env_key: str) -> None:
-            path = os.getenv(f"STATUS_ICON_{env_key}")
-            if not path:
+            path = _resolve_path(env_key)
+            if not path or not os.path.exists(path):
                 return
             image = NSImage.alloc().initWithContentsOfFile_(path)
             if image is None:
+                print(f"[StatusBar] 图标加载失败: {path}")
                 return
             image.setTemplate_(template_flag)
             self._custom_icons[env_key] = image
+            print(f"[StatusBar] 已加载图标: {env_key} <- {path}")
 
-        for visual in list(_STATE_VISUALS.values()) + [_RETRY_VISUAL]:
+        for visual in _STATE_VISUALS.values():
             _try_load(visual.env_key)

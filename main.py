@@ -30,8 +30,8 @@ class TranscriptionJob:
     audio_bytes: bytes
     processor: str
     mode: str = "transcriptions"
-    allow_retry: bool = False
-    is_retry: bool = False
+    retries_left: int = 0
+    attempt: int = 1
 
 
 def check_microphone_permissions():
@@ -53,12 +53,10 @@ class VoiceAssistant:
         self.openai_processor = openai_processor  # OpenAI GPT-4o transcribe
         self.local_processor = local_processor    # 本地 whisper
         self.job_queue: queue.Queue[TranscriptionJob] = queue.Queue()
-        self.last_audio_bytes: Optional[bytes] = None  # 保存上次的音频用于重试
-        self.retry_in_progress = False
-        self.awaiting_retry = False
         self._current_state = InputState.IDLE
 
         self.status_controller = StatusBarController()
+        self.max_auto_retries = int(os.getenv("AUTO_RETRY_LIMIT", "5"))
 
         self.keyboard_manager = KeyboardManager(
             on_record_start=self.start_openai_recording,    # Ctrl+F: OpenAI
@@ -104,14 +102,12 @@ class VoiceAssistant:
         self._current_state = new_state
         self._notify_status()
 
-    def _notify_status(self, *, is_retry: bool = False):
+    def _notify_status(self):
         queue_length = self.job_queue.qsize()
-        awaiting_retry = self.awaiting_retry or is_retry
         try:
             self.status_controller.update_state(
                 self._current_state,
                 queue_length=queue_length,
-                awaiting_retry=awaiting_retry,
             )
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"更新状态栏失败: {exc}")
@@ -134,30 +130,20 @@ class VoiceAssistant:
         processor: str,
         *,
         mode: str = "transcriptions",
-        allow_retry: bool = False,
-        is_retry: bool = False,
+        max_retries: int = 0,
+        attempt: int = 1,
     ) -> None:
-        if allow_retry and is_retry:
-            if self.retry_in_progress:
-                logger.info("🔁 上一次重试仍在进行，忽略重复请求")
-                return
-            self.retry_in_progress = True
-
-        if allow_retry:
-            self.last_audio_bytes = audio_bytes
-            self.awaiting_retry = False
-
         job = TranscriptionJob(
             audio_bytes=audio_bytes,
             processor=processor,
             mode=mode,
-            allow_retry=allow_retry,
-            is_retry=is_retry,
+            retries_left=max(0, max_retries),
+            attempt=attempt,
         )
         self.job_queue.put(job)
-        retry_tag = " [重试]" if is_retry else ""
+        retry_tag = f" [重试 第{attempt}次]" if attempt > 1 else ""
         logger.info(f"📤 已加入 {processor} 队列 (mode: {mode}){retry_tag}")
-        self._notify_status(is_retry=is_retry and allow_retry)
+        self._notify_status()
 
     def _job_worker(self):
         while True:
@@ -167,17 +153,15 @@ class VoiceAssistant:
             except Exception as exc:  # noqa: BLE001
                 logger.error(f"转录任务处理失败: {exc}", exc_info=True)
             finally:
-                if job.allow_retry:
-                    self.retry_in_progress = False
                 self.job_queue.task_done()
                 self._notify_status()
 
     def _run_job(self, job: TranscriptionJob):
         logger.info(
-            "🎧 开始处理音频 (processor=%s, mode=%s%s)",
+            "🎧 开始处理音频 (processor=%s, mode=%s, 尝试 %d)",
             job.processor,
             job.mode,
-            " 重试" if job.is_retry else "",
+            job.attempt,
         )
 
         buffer = io.BytesIO(job.audio_bytes)
@@ -198,12 +182,7 @@ class VoiceAssistant:
                 raise ValueError(f"未知的处理器: {job.processor}")
         except Exception as exc:  # noqa: BLE001
             logger.error(f"{job.processor} 转录发生异常: {exc}", exc_info=True)
-            if job.allow_retry:
-                self.last_audio_bytes = job.audio_bytes
-                self.awaiting_retry = True
-                logger.info("💡 转录失败，音频已保存，再按Ctrl+F继续重试")
-            self.keyboard_manager.show_error("!")
-            self._notify_status()
+            self._handle_transcription_failure(job, str(exc))
             return
         finally:
             try:
@@ -219,43 +198,47 @@ class VoiceAssistant:
 
         if error:
             logger.error(f"{job.processor} 转录失败: {error}")
-            if job.allow_retry:
-                self.last_audio_bytes = job.audio_bytes
-                self.awaiting_retry = True
-                logger.info("💡 转录失败，音频已保存，再按Ctrl+F继续重试")
-            self.keyboard_manager.show_error("!")
+            self._handle_transcription_failure(job, str(error))
+            return
+
+        self.keyboard_manager.type_text(text, error)
+        logger.info(f"✅ 转录成功 (尝试 {job.attempt})")
+        self._notify_status()
+
+    def _handle_transcription_failure(self, job: TranscriptionJob, error_message: str):
+        if job.retries_left > 0:
+            logger.warning(
+                "⚠️ %s 转录失败 (尝试 %d)，将在 %d 次内自动重试",
+                job.processor,
+                job.attempt,
+                job.retries_left,
+            )
+            self._schedule_retry(job)
             self._notify_status()
             return
 
-        if job.allow_retry:
-            # 成功后清除重试缓存
-            self.last_audio_bytes = None
-            self.awaiting_retry = False
-
-        self.keyboard_manager.type_text(text, error)
-        logger.info("✅ 转录成功")
+        logger.error(
+            "❌ %s 转录失败 (尝试 %d)，自动重试已用尽: %s",
+            job.processor,
+            job.attempt,
+            error_message,
+        )
+        self.keyboard_manager.show_error("❌ 自动转录失败")
         self._notify_status()
+
+    def _schedule_retry(self, job: TranscriptionJob):
+        next_retries = max(0, job.retries_left - 1)
+        self._queue_job(
+            job.audio_bytes,
+            job.processor,
+            mode=job.mode,
+            max_retries=next_retries,
+            attempt=job.attempt + 1,
+        )
 
     def start_openai_recording(self):
         """开始录音（OpenAI GPT-4o transcribe模式 - Ctrl+F）"""
-        if (
-            self.awaiting_retry
-            and self.last_audio_bytes is not None
-            and not self.retry_in_progress
-        ):
-            logger.info("🔄 重试上次录音的OpenAI转录")
-            self.keyboard_manager.state = InputState.PROCESSING
-            self._queue_job(
-                self.last_audio_bytes,
-                "openai",
-                allow_retry=True,
-                is_retry=True,
-            )
-        else:
-            if self.retry_in_progress:
-                logger.info("⏳ 当前重试仍在进行，忽略重复请求")
-                return
-            self.audio_recorder.start_recording()
+        self.audio_recorder.start_recording()
 
     def stop_openai_recording(self):
         """停止录音并处理（OpenAI GPT-4o transcribe模式 - Ctrl+F）"""
@@ -274,7 +257,7 @@ class VoiceAssistant:
         self._queue_job(
             audio_bytes,
             "openai",
-            allow_retry=True,
+            max_retries=self.max_auto_retries,
         )
 
     def start_local_recording(self):
@@ -315,7 +298,12 @@ class VoiceAssistant:
             self.keyboard_manager.reset_state()
             return
 
-        self._queue_job(audio_bytes, "openai", mode="translations")
+        self._queue_job(
+            audio_bytes,
+            "openai",
+            mode="translations",
+            max_retries=self.max_auto_retries,
+        )
 
     def reset_state(self):
         """重置状态"""
