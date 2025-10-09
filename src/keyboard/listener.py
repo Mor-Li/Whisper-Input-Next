@@ -7,7 +7,7 @@ import os
 
 
 class KeyboardManager:
-    def __init__(self, on_record_start, on_record_stop, on_translate_start, on_translate_stop, on_kimi_start, on_kimi_stop, on_reset_state):
+    def __init__(self, on_record_start, on_record_stop, on_translate_start, on_translate_stop, on_kimi_start, on_kimi_stop, on_reset_state, on_state_change=None):
         self.keyboard = Controller()
         self.ctrl_pressed = False  # 改为ctrl键状态
         self.f_pressed = False  # F键状态
@@ -30,6 +30,7 @@ class KeyboardManager:
         self.on_kimi_start = on_kimi_start
         self.on_kimi_stop = on_kimi_stop
         self.on_reset_state = on_reset_state
+        self.on_state_change = on_state_change
 
         
         # 状态管理
@@ -45,6 +46,8 @@ class KeyboardManager:
             InputState.ERROR: lambda msg: f"{msg}",  # 错误消息使用函数动态生成
             InputState.WARNING: lambda msg: f"! {msg}"  # 警告消息使用感叹号
         }
+
+        self.state_symbol_enabled = True
 
         # 获取系统平台
         sysetem_platform = os.getenv("SYSTEM_PLATFORM")
@@ -101,38 +104,44 @@ class KeyboardManager:
             if new_state == InputState.RECORDING:
                 # 录音状态
                 self.temp_text_length = 0
-                self.type_temp_text(message)
+                if self.state_symbol_enabled:
+                    self.type_temp_text(message)
                 self.on_record_start()
                 
             elif new_state == InputState.RECORDING_TRANSLATE:
                 # 翻译,录音状态
                 self.temp_text_length = 0
-                self.type_temp_text(message)
+                if self.state_symbol_enabled:
+                    self.type_temp_text(message)
                 self.on_translate_start()
                 
             elif new_state == InputState.RECORDING_KIMI:
                 # 本地 Whisper 录音状态
                 self.temp_text_length = 0
-                self.type_temp_text(message)
+                if self.state_symbol_enabled:
+                    self.type_temp_text(message)
                 self.on_kimi_start()
 
             elif new_state == InputState.PROCESSING:
                 self._delete_previous_text()
-                self.type_temp_text(message)
+                if self.state_symbol_enabled:
+                    self.type_temp_text(message)
                 self.processing_text = message
                 self.on_record_stop()
                 
             elif new_state == InputState.PROCESSING_KIMI:
                 # 本地 Whisper 处理状态
                 self._delete_previous_text()
-                self.type_temp_text(message)
+                if self.state_symbol_enabled:
+                    self.type_temp_text(message)
                 self.processing_text = message
                 self.on_kimi_stop()
 
             elif new_state == InputState.TRANSLATING:
                 # 翻译状态
                 self._delete_previous_text()                 
-                self.type_temp_text(message)
+                if self.state_symbol_enabled:
+                    self.type_temp_text(message)
                 self.processing_text = message
                 self.on_translate_stop()
             
@@ -140,7 +149,8 @@ class KeyboardManager:
                 # 警告状态
                 message = message(self.warning_message)
                 self._delete_previous_text()
-                self.type_temp_text(message)
+                if self.state_symbol_enabled:
+                    self.type_temp_text(message)
                 self.warning_message = None
                 self._schedule_message_clear()     
             
@@ -148,7 +158,8 @@ class KeyboardManager:
                 # 错误状态
                 message = message(self.error_message)
                 self._delete_previous_text()
-                self.type_temp_text(message)
+                if self.state_symbol_enabled:
+                    self.type_temp_text(message)
                 self.error_message = None
                 self._schedule_message_clear()  
         
@@ -158,7 +169,18 @@ class KeyboardManager:
             
             else:
                 # 其他状态
-                self.type_temp_text(message)
+                if self.state_symbol_enabled:
+                    self.type_temp_text(message)
+
+            if self.on_state_change:
+                try:
+                    self.on_state_change(new_state)
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug(f"状态回调异常: {exc}")
+
+    def set_state_symbol_enabled(self, enabled: bool):
+        """开启或关闭在输入框内展示状态符号"""
+        self.state_symbol_enabled = enabled
     
     def _schedule_message_clear(self):
         """计划清除消息"""
@@ -249,7 +271,7 @@ class KeyboardManager:
     
     def type_temp_text(self, text):
         """输入临时状态文本"""
-        if not text:
+        if not text or not self.state_symbol_enabled:
             return
             
         # 判断是否为状态符号（现在使用数字）

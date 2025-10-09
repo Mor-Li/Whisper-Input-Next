@@ -17,6 +17,7 @@ from src.transcription.whisper import WhisperProcessor
 from src.utils.logger import logger
 from src.transcription.senseVoiceSmall import SenseVoiceSmallProcessor
 from src.transcription.local_whisper import LocalWhisperProcessor
+from src.ui.status_bar import StatusBarController
 
 # 版本信息
 __version__ = "3.1.0"
@@ -55,6 +56,9 @@ class VoiceAssistant:
         self.last_audio_bytes: Optional[bytes] = None  # 保存上次的音频用于重试
         self.retry_in_progress = False
         self.awaiting_retry = False
+        self._current_state = InputState.IDLE
+
+        self.status_controller = StatusBarController()
 
         self.keyboard_manager = KeyboardManager(
             on_record_start=self.start_openai_recording,    # Ctrl+F: OpenAI
@@ -63,8 +67,12 @@ class VoiceAssistant:
             on_translate_stop=self.stop_translation_recording,
             on_kimi_start=self.start_local_recording,       # Ctrl+I: Local Whisper
             on_kimi_stop=self.stop_local_recording,
-            on_reset_state=self.reset_state
+            on_reset_state=self.reset_state,
+            on_state_change=self._on_state_change,
         )
+
+        # 使用状态栏反馈状态，不再向输入框输出"0"/"1"
+        self.keyboard_manager.set_state_symbol_enabled(False)
 
         # 设置自动停止录音的回调
         self.audio_recorder.set_auto_stop_callback(self._handle_auto_stop)
@@ -77,6 +85,9 @@ class VoiceAssistant:
         )
         self._worker_thread.start()
 
+        # 初始化状态栏显示
+        self._notify_status()
+
     def _handle_auto_stop(self):
         """处理自动停止录音的情况"""
         logger.warning("⏰ 录音时间已达到最大限制，自动中止录音！")
@@ -88,6 +99,22 @@ class VoiceAssistant:
         self.keyboard_manager.reset_state()
 
         logger.info("💡 录音已中止，状态已重置")
+
+    def _on_state_change(self, new_state: InputState):
+        self._current_state = new_state
+        self._notify_status()
+
+    def _notify_status(self, *, is_retry: bool = False):
+        queue_length = self.job_queue.qsize()
+        awaiting_retry = self.awaiting_retry or is_retry
+        try:
+            self.status_controller.update_state(
+                self._current_state,
+                queue_length=queue_length,
+                awaiting_retry=awaiting_retry,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f"更新状态栏失败: {exc}")
 
     def _buffer_to_bytes(self, audio_buffer: Optional[io.BytesIO]) -> Optional[bytes]:
         if audio_buffer is None:
@@ -118,8 +145,7 @@ class VoiceAssistant:
 
         if allow_retry:
             self.last_audio_bytes = audio_bytes
-            if not is_retry:
-                self.awaiting_retry = False
+            self.awaiting_retry = False
 
         job = TranscriptionJob(
             audio_bytes=audio_bytes,
@@ -131,6 +157,7 @@ class VoiceAssistant:
         self.job_queue.put(job)
         retry_tag = " [重试]" if is_retry else ""
         logger.info(f"📤 已加入 {processor} 队列 (mode: {mode}){retry_tag}")
+        self._notify_status(is_retry=is_retry and allow_retry)
 
     def _job_worker(self):
         while True:
@@ -143,6 +170,7 @@ class VoiceAssistant:
                 if job.allow_retry:
                     self.retry_in_progress = False
                 self.job_queue.task_done()
+                self._notify_status()
 
     def _run_job(self, job: TranscriptionJob):
         logger.info(
@@ -175,6 +203,7 @@ class VoiceAssistant:
                 self.awaiting_retry = True
                 logger.info("💡 转录失败，音频已保存，再按Ctrl+F继续重试")
             self.keyboard_manager.show_error("!")
+            self._notify_status()
             return
         finally:
             try:
@@ -195,6 +224,7 @@ class VoiceAssistant:
                 self.awaiting_retry = True
                 logger.info("💡 转录失败，音频已保存，再按Ctrl+F继续重试")
             self.keyboard_manager.show_error("!")
+            self._notify_status()
             return
 
         if job.allow_retry:
@@ -204,6 +234,7 @@ class VoiceAssistant:
 
         self.keyboard_manager.type_text(text, error)
         logger.info("✅ 转录成功")
+        self._notify_status()
 
     def start_openai_recording(self):
         """开始录音（OpenAI GPT-4o transcribe模式 - Ctrl+F）"""
@@ -293,7 +324,15 @@ class VoiceAssistant:
     def run(self):
         """运行语音助手"""
         logger.info(f"=== 语音助手已启动 (v{__version__}) ===")
-        self.keyboard_manager.start_listening()
+        keyboard_thread = threading.Thread(
+            target=self.keyboard_manager.start_listening,
+            name="keyboard-listener",
+            daemon=True,
+        )
+        keyboard_thread.start()
+
+        # 阻塞在状态栏事件循环，直到用户退出
+        self.status_controller.start()
 
 def main():
     # 判断是 OpenAI GPT-4o transcribe 还是 GROQ Whisper 还是 SiliconFlow 还是本地whisper.cpp
