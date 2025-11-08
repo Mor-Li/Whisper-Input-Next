@@ -3,8 +3,7 @@ import sounddevice as sd
 import numpy as np
 import queue
 import soundfile as sf
-import os
-import tempfile
+import subprocess
 from ..utils.logger import logger
 import time
 import threading
@@ -92,7 +91,34 @@ class AudioRecorder:
     def set_auto_stop_callback(self, callback):
         """设置自动停止时的回调函数"""
         self.auto_stop_callback = callback
-    
+
+    def _send_notification(self, title, message, subtitle=""):
+        """
+        发送 macOS 系统通知
+
+        Args:
+            title: 通知标题
+            message: 通知内容
+            subtitle: 通知副标题（可选）
+        """
+        try:
+            # 构建 osascript 命令
+            script = f'display notification "{message}" with title "{title}"'
+            if subtitle:
+                script = f'display notification "{message}" with title "{title}" subtitle "{subtitle}"'
+
+            # 执行 AppleScript
+            subprocess.run(
+                ["osascript", "-e", script],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=2  # 设置超时避免阻塞
+            )
+        except Exception as e:
+            # 通知失败不影响主流程，只记录日志
+            logger.debug(f"发送系统通知失败: {e}")
+
     def start_recording(self):
         """开始录音"""
         if not self.recording:
@@ -127,7 +153,16 @@ class AudioRecorder:
                 logger.info(f"⏱️  已设置自动停止定时器: {self.max_record_duration/60:.1f}分钟后自动停止")
             except Exception as e:
                 self.recording = False
-                logger.error(f"启动录音失败: {e}")
+                error_msg = str(e)
+                logger.error(f"启动录音失败: {error_msg}")
+
+                # 发送系统通知
+                self._send_notification(
+                    title="⚠️ 音频设备错误",
+                    message="麦克风可能已断开，请检查设备连接",
+                    subtitle="录音启动失败"
+                )
+
                 raise
     
     def stop_recording(self, abort=False):
