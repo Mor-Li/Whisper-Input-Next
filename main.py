@@ -262,10 +262,16 @@ class VoiceAssistant:
 
     def start_local_recording(self):
         """开始录音（本地 Whisper 模式 - Ctrl+I）"""
+        if self.local_processor is None:
+            logger.warning("本地 Whisper 不可用，请使用 Ctrl+F (OpenAI) 模式")
+            self.status_controller.show_error("Local Whisper 不可用")
+            return
         self.audio_recorder.start_recording()
 
     def stop_local_recording(self):
         """停止录音并处理（本地 Whisper 模式 - Ctrl+I）"""
+        if self.local_processor is None:
+            return
         audio = self.audio_recorder.stop_recording()
         if audio == "TOO_SHORT":
             logger.warning("录音时长太短，状态将重置")
@@ -347,9 +353,13 @@ def main():
         os.environ["SERVICE_PLATFORM"] = "openai"
         openai_processor = WhisperProcessor()
         
-        # 创建本地 Whisper 处理器
+        # 创建本地 Whisper 处理器（可选，如果不可用则跳过）
         os.environ["SERVICE_PLATFORM"] = "local"
-        local_processor = LocalWhisperProcessor()
+        try:
+            local_processor = LocalWhisperProcessor()
+        except FileNotFoundError as e:
+            logger.warning(f"本地 Whisper 不可用，将禁用本地转录功能: {e}")
+            local_processor = None
         
         # 恢复原始环境变量
         if original_platform:
