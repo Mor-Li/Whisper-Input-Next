@@ -75,6 +75,9 @@ class VoiceAssistant:
         # 设置自动停止录音的回调
         self.audio_recorder.set_auto_stop_callback(self._handle_auto_stop)
 
+        # 设置设备断开时的回调
+        self.audio_recorder.set_device_disconnect_callback(self._handle_device_disconnect)
+
         # 后台转录线程
         self._worker_thread = threading.Thread(
             target=self._job_worker,
@@ -97,6 +100,21 @@ class VoiceAssistant:
         self.keyboard_manager.reset_state()
 
         logger.info("💡 录音已中止，状态已重置")
+
+    def _handle_device_disconnect(self):
+        """处理设备断开时的录音停止（保存并转录已录制内容）"""
+        logger.warning("设备断开，触发停止录音并转录")
+
+        # 根据当前状态调用相应的 stop 方法
+        if self._current_state == InputState.OPENAI_RECORDING:
+            self.stop_openai_recording()
+        elif self._current_state == InputState.OPENAI_TRANSLATE_RECORDING:
+            self.stop_translation_recording()
+        elif self._current_state == InputState.LOCAL_RECORDING:
+            self.stop_local_recording()
+        else:
+            # 非录音状态，只重置
+            self.keyboard_manager.reset_state()
 
     def _on_state_change(self, new_state: InputState):
         self._current_state = new_state
