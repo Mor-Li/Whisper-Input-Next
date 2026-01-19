@@ -3,6 +3,7 @@ import os
 import queue
 import sys
 import threading
+import asyncio
 from dataclasses import dataclass
 from typing import Optional
 
@@ -17,6 +18,7 @@ from src.transcription.whisper import WhisperProcessor
 from src.utils.logger import logger
 from src.transcription.senseVoiceSmall import SenseVoiceSmallProcessor
 from src.transcription.local_whisper import LocalWhisperProcessor
+from src.transcription.doubao_streaming import DoubaoStreamingProcessor
 from src.ui.status_bar import StatusBarController
 
 # 版本信息
@@ -48,19 +50,37 @@ def check_microphone_permissions():
     logger.warning("===============================\n")
 
 class VoiceAssistant:
-    def __init__(self, openai_processor, local_processor):
+    def __init__(self, openai_processor, local_processor, doubao_processor):
         self.audio_recorder = AudioRecorder()
         self.openai_processor = openai_processor  # OpenAI GPT-4o transcribe
         self.local_processor = local_processor    # 本地 whisper
+        self.doubao_processor = doubao_processor  # 豆包流式 ASR
         self.job_queue: queue.Queue[TranscriptionJob] = queue.Queue()
         self._current_state = InputState.IDLE
 
         self.status_controller = StatusBarController()
         self.max_auto_retries = int(os.getenv("AUTO_RETRY_LIMIT", "5"))
 
+        # 转录服务配置: "doubao" (默认，流式) 或 "openai" (批量)
+        self.transcription_service = os.getenv("TRANSCRIPTION_SERVICE", "doubao")
+
+        # 流式转录相关
+        self._streaming_task: Optional[asyncio.Task] = None
+        self._streaming_loop: Optional[asyncio.AbstractEventLoop] = None
+
+        # 根据配置选择 Ctrl+F 的处理方式
+        if self.transcription_service == "doubao" and self.doubao_processor and self.doubao_processor.is_available():
+            ctrl_f_start = self.start_doubao_streaming
+            ctrl_f_stop = self.stop_doubao_streaming
+            logger.info("Ctrl+F 使用豆包流式识别")
+        else:
+            ctrl_f_start = self.start_openai_recording
+            ctrl_f_stop = self.stop_openai_recording
+            logger.info("Ctrl+F 使用 OpenAI 批量转录")
+
         self.keyboard_manager = KeyboardManager(
-            on_record_start=self.start_openai_recording,    # Ctrl+F: OpenAI
-            on_record_stop=self.stop_openai_recording,
+            on_record_start=ctrl_f_start,    # Ctrl+F: 根据配置选择
+            on_record_stop=ctrl_f_stop,
             on_translate_start=self.start_translation_recording,  # 保留翻译功能
             on_translate_stop=self.stop_translation_recording,
             on_kimi_start=self.start_local_recording,       # Ctrl+I: Local Whisper
@@ -106,12 +126,14 @@ class VoiceAssistant:
         logger.warning("设备断开，触发停止录音并转录")
 
         # 根据当前状态调用相应的 stop 方法
-        if self._current_state == InputState.OPENAI_RECORDING:
+        if self._current_state == InputState.RECORDING:
             self.stop_openai_recording()
-        elif self._current_state == InputState.OPENAI_TRANSLATE_RECORDING:
+        elif self._current_state == InputState.RECORDING_TRANSLATE:
             self.stop_translation_recording()
-        elif self._current_state == InputState.LOCAL_RECORDING:
+        elif self._current_state == InputState.RECORDING_KIMI:
             self.stop_local_recording()
+        elif self._current_state == InputState.DOUBAO_STREAMING:
+            self.stop_doubao_streaming()
         else:
             # 非录音状态，只重置
             self.keyboard_manager.reset_state()
@@ -329,6 +351,79 @@ class VoiceAssistant:
             max_retries=self.max_auto_retries,
         )
 
+    def start_doubao_streaming(self):
+        """开始豆包流式识别"""
+        if self.doubao_processor is None or not self.doubao_processor.is_available():
+            logger.warning("豆包流式识别不可用，回退到 OpenAI 模式")
+            self.start_openai_recording()
+            return
+
+        # 启动流式录音
+        error = self.audio_recorder.start_streaming_recording()
+        if error:
+            logger.error(f"启动流式录音失败: {error}")
+            self.keyboard_manager.reset_state()
+            return
+
+        # 在新线程中运行异步流式转录
+        def run_streaming():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            self._streaming_loop = loop
+
+            try:
+                loop.run_until_complete(self._run_doubao_streaming())
+            except Exception as e:
+                logger.error(f"流式转录异常: {e}", exc_info=True)
+            finally:
+                loop.close()
+                self._streaming_loop = None
+
+        self._streaming_thread = threading.Thread(
+            target=run_streaming,
+            name="doubao-streaming",
+            daemon=True,
+        )
+        self._streaming_thread.start()
+
+    async def _run_doubao_streaming(self):
+        """运行豆包流式转录"""
+        logger.info("🎤 开始豆包流式转录...")
+
+        def on_definite_text(text: str):
+            """收到已确定的文本时，直接输入到当前应用"""
+            if text:
+                logger.info(f"[输入] {text}")
+                self.keyboard_manager.type_text(text, None)
+
+        def on_pending_text(text: str):
+            """收到待确定的文本（不处理，只记录日志）"""
+            pass  # 不在状态栏显示，不做任何处理
+
+        def on_complete():
+            """转录完成"""
+            logger.info("✅ 豆包流式转录完成")
+            self.keyboard_manager.reset_state()
+
+        def on_error(error: str):
+            """发生错误"""
+            logger.error(f"❌ 豆包流式转录错误: {error}")
+
+        # 豆包 API 只支持 16000Hz，stream_audio_chunks 会自动重采样
+        await self.doubao_processor.process_audio_stream(
+            self.audio_recorder.stream_audio_chunks(target_sample_rate=16000),
+            on_definite_text,
+            on_pending_text,
+            on_complete,
+            on_error,
+            sample_rate=16000,
+        )
+
+    def stop_doubao_streaming(self):
+        """停止豆包流式识别"""
+        logger.info("🛑 停止豆包流式转录...")
+        self.audio_recorder.stop_streaming_recording()
+
     def reset_state(self):
         """重置状态"""
         self.keyboard_manager.reset_state()
@@ -364,13 +459,13 @@ def main():
         raise ValueError(f"无效的服务平台: {service_platform}, 支持的平台: openai&local (推荐), openai, groq, siliconflow, local")
     
     try:
-        # 创建双处理器架构：OpenAI 和本地 Whisper 处理器
+        # 创建三处理器架构：OpenAI + 本地 Whisper + 豆包流式
         original_platform = os.environ.get("SERVICE_PLATFORM")
-        
+
         # 创建 OpenAI 处理器
         os.environ["SERVICE_PLATFORM"] = "openai"
         openai_processor = WhisperProcessor()
-        
+
         # 创建本地 Whisper 处理器（可选，如果不可用则跳过）
         os.environ["SERVICE_PLATFORM"] = "local"
         try:
@@ -378,14 +473,20 @@ def main():
         except FileNotFoundError as e:
             logger.warning(f"本地 Whisper 不可用，将禁用本地转录功能: {e}")
             local_processor = None
-        
+
+        # 创建豆包流式处理器（可选，如果 API Key 未配置则跳过）
+        doubao_processor = DoubaoStreamingProcessor()
+        if not doubao_processor.is_available():
+            logger.warning("豆包流式 ASR 不可用（未配置 API Key），将使用 OpenAI 作为默认转录服务")
+            doubao_processor = None
+
         # 恢复原始环境变量
         if original_platform:
             os.environ["SERVICE_PLATFORM"] = original_platform
         else:
             os.environ.pop("SERVICE_PLATFORM", None)
-        
-        assistant = VoiceAssistant(openai_processor, local_processor)
+
+        assistant = VoiceAssistant(openai_processor, local_processor, doubao_processor)
         assistant.run()
     except Exception as e:
         error_msg = str(e)

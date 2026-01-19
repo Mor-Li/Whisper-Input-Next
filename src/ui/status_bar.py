@@ -33,6 +33,7 @@ _STATE_VISUALS = {
     InputState.RECORDING: _StateVisual("🔴", "录音中 (OpenAI)", "RECORDING"),
     InputState.RECORDING_TRANSLATE: _StateVisual("🔴", "录音中 (翻译)", "RECORDING"),
     InputState.RECORDING_KIMI: _StateVisual("🟠", "录音中 (本地 Whisper)", "RECORDING"),
+    InputState.DOUBAO_STREAMING: _StateVisual("🟢", "流式识别中 (豆包)", "RECORDING"),
     InputState.PROCESSING: _StateVisual("🔵", "转录处理中", "PROCESSING"),
     InputState.PROCESSING_KIMI: _StateVisual("🔵", "转录处理中", "PROCESSING"),
     InputState.TRANSLATING: _StateVisual("🟡", "翻译中", "PROCESSING"),

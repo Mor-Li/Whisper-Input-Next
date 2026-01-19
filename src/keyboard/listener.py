@@ -249,9 +249,10 @@ class KeyboardManager:
             time.sleep(0.5)
             
             logger.info("文本输入完成")
-            
-            # 清理处理状态
-            self.state = InputState.IDLE
+
+            # 清理处理状态（流式识别中不重置，保持录音状态）
+            if self.state != InputState.DOUBAO_STREAMING:
+                self.state = InputState.IDLE
         except Exception as e:
             logger.error(f"文本输入失败: {e}")
             self.show_error(f"❌ 文本输入失败: {e}")

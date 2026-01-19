@@ -1,4 +1,5 @@
 import io
+import asyncio
 import sounddevice as sd
 import numpy as np
 import queue
@@ -7,6 +8,7 @@ import subprocess
 from ..utils.logger import logger
 import time
 import threading
+from typing import AsyncGenerator, Optional
 
 # 允许的设备关键字（按优先级从高到低）
 # 只允许这些设备，其他设备不使用
@@ -326,5 +328,203 @@ class AudioRecorder:
         audio_buffer = io.BytesIO()
         sf.write(audio_buffer, audio, self.sample_rate, format='WAV')
         audio_buffer.seek(0)  # 将缓冲区指针移动到开始位置
-        
+
         return audio_buffer
+
+    async def stream_audio_chunks(self, chunk_duration_ms: int = 200, target_sample_rate: int = 16000) -> AsyncGenerator[bytes, None]:
+        """
+        异步生成器，实时 yield 音频块（用于流式转录）
+
+        Args:
+            chunk_duration_ms: 每个音频块的时长（毫秒），默认 200ms
+            target_sample_rate: 目标采样率（默认 16000Hz，豆包 API 要求）
+
+        Yields:
+            bytes: 16-bit PCM 音频数据（重采样到目标采样率）
+        """
+        # 计算原始采样率下每个 chunk 需要的采样点数
+        samples_per_chunk_original = int(self.sample_rate * chunk_duration_ms / 1000)
+        accumulated_samples = []
+        chunk_count = 0
+
+        # 计算重采样比例
+        resample_ratio = target_sample_rate / self.sample_rate
+        need_resample = abs(resample_ratio - 1.0) > 0.01
+
+        logger.info(f"🎵 开始生成音频块: {self.sample_rate}Hz -> {target_sample_rate}Hz, 每块 {chunk_duration_ms}ms ({samples_per_chunk_original} samples)")
+
+        while self.recording:
+            try:
+                # 非阻塞获取音频数据
+                chunk = self.audio_queue.get_nowait()
+                accumulated_samples.append(chunk)
+
+                # 计算累积的采样点数
+                total_samples = sum(len(c) for c in accumulated_samples)
+
+                # 当累积够一个完整的 chunk 时，yield 出去
+                if total_samples >= samples_per_chunk_original:
+                    # 合并所有累积的音频
+                    audio = np.concatenate(accumulated_samples)
+
+                    # 取出完整的 chunk
+                    chunk_data = audio[:samples_per_chunk_original]
+
+                    # 保留剩余部分
+                    remaining = audio[samples_per_chunk_original:]
+                    accumulated_samples = [remaining] if len(remaining) > 0 else []
+
+                    # 重采样（如果需要）
+                    if need_resample:
+                        # 简单的线性插值重采样
+                        target_length = int(len(chunk_data) * resample_ratio)
+                        indices = np.linspace(0, len(chunk_data) - 1, target_length)
+                        chunk_data = np.interp(indices, np.arange(len(chunk_data)), chunk_data.flatten())
+
+                    # 转换为 bytes (16-bit PCM)
+                    # sounddevice 返回的是 float32 格式 [-1, 1]，需要缩放到 int16 范围
+                    chunk_data = chunk_data.flatten()
+                    # 缩放到 int16 范围 [-32768, 32767]
+                    chunk_data = chunk_data * 32767
+                    chunk_data = np.clip(chunk_data, -32768, 32767)
+                    chunk_bytes = chunk_data.astype(np.int16).tobytes()
+                    chunk_count += 1
+                    logger.debug(f"🎵 yield 音频块 #{chunk_count}: {len(chunk_bytes)} bytes")
+                    yield chunk_bytes
+
+            except queue.Empty:
+                # 队列为空，等待一会
+                await asyncio.sleep(0.02)  # 20ms
+
+        # 录音结束，输出剩余的音频
+        logger.info(f"🎵 录音结束，已输出 {chunk_count} 个块，检查剩余音频...")
+        if accumulated_samples:
+            audio = np.concatenate(accumulated_samples)
+            if len(audio) > 0:
+                audio = audio.flatten()
+                if need_resample:
+                    target_length = int(len(audio) * resample_ratio)
+                    indices = np.linspace(0, len(audio) - 1, target_length)
+                    audio = np.interp(indices, np.arange(len(audio)), audio)
+                # 缩放到 int16 范围
+                audio = audio * 32767
+                audio = np.clip(audio, -32768, 32767)
+                chunk_bytes = audio.astype(np.int16).tobytes()
+                chunk_count += 1
+                logger.info(f"🎵 yield 最后音频块 #{chunk_count}: {len(chunk_bytes)} bytes")
+                yield chunk_bytes
+        logger.info(f"🎵 音频生成器结束，共 {chunk_count} 个块")
+
+    def start_streaming_recording(self) -> Optional[str]:
+        """
+        开始流式录音（用于豆包流式转录）
+
+        Returns:
+            None: 成功
+            str: 错误信息
+        """
+        if self.recording:
+            return "已经在录音中"
+
+        try:
+            # 选择最佳设备
+            device_idx, best_device = self._get_best_input_device()
+
+            if best_device is None:
+                self._send_notification(
+                    title="无可用音频设备",
+                    message="请连接麦克风",
+                    subtitle="录音失败"
+                )
+                return "没有可用的音频输入设备"
+
+            # 检查设备是否切换
+            new_device_name = best_device['name']
+            device_switched = (self._last_used_device is not None and
+                               self._last_used_device != new_device_name)
+            first_recording = (self._last_used_device is None)
+
+            # 更新当前设备和采样率
+            self.current_device = new_device_name
+            self.sample_rate = int(best_device['default_samplerate'])
+            self._last_used_device = new_device_name
+
+            logger.info("开始流式录音...")
+            self.recording = True
+            self.record_start_time = time.time()
+            self._device_error_detected = False
+
+            # 清空队列
+            while not self.audio_queue.empty():
+                self.audio_queue.get()
+
+            # 只有在设备切换或第一次录音时才发送通知
+            if device_switched or first_recording:
+                if device_switched:
+                    self._send_notification(
+                        title="音频设备已切换",
+                        message=f"使用: {self.current_device}",
+                        subtitle=""
+                    )
+                else:
+                    self._send_notification(
+                        title="开始流式录音",
+                        message=f"使用: {self.current_device}",
+                        subtitle=""
+                    )
+
+            def audio_callback(indata, frames, time, status):
+                if status:
+                    status_str = str(status).lower()
+                    logger.warning(f"音频录制状态: {status}")
+                    if ("input" in status_str or "device" in status_str) and "overflow" not in status_str:
+                        if not self._device_error_detected:
+                            self._device_error_detected = True
+                            self._handle_device_disconnect()
+                        return
+                if self.recording:
+                    self.audio_queue.put(indata.copy())
+
+            self.stream = sd.InputStream(
+                channels=1,
+                samplerate=self.sample_rate,
+                callback=audio_callback,
+                device=device_idx,
+                latency='low'
+            )
+            self.stream.start()
+            logger.info(f"流式音频流已启动 (设备: {self.current_device})")
+
+            # 设置自动停止定时器
+            self.auto_stop_timer = threading.Timer(self.max_record_duration, self._auto_stop_recording)
+            self.auto_stop_timer.start()
+
+            return None  # 成功
+
+        except Exception as e:
+            self.recording = False
+            error_msg = str(e)
+            logger.error(f"启动流式录音失败: {error_msg}")
+            self._send_notification(
+                title="⚠️ 音频设备错误",
+                message="麦克风可能已断开，请检查设备连接",
+                subtitle="录音启动失败"
+            )
+            return error_msg
+
+    def stop_streaming_recording(self):
+        """停止流式录音"""
+        if not self.recording:
+            return
+
+        logger.info("停止流式录音...")
+        self.recording = False
+
+        if hasattr(self, 'stream') and self.stream:
+            self.stream.stop()
+            self.stream.close()
+
+        # 取消自动停止定时器
+        if self.auto_stop_timer and self.auto_stop_timer.is_alive():
+            self.auto_stop_timer.cancel()
+            logger.info("✅ 已取消自动停止定时器")
