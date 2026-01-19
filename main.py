@@ -23,7 +23,7 @@ from src.ui.status_bar import StatusBarController
 from src.ui.floating_preview import FloatingPreviewWindow
 
 # 版本信息
-__version__ = "3.1.0"
+__version__ = "3.2.0"
 __author__ = "Mor-Li"
 __description__ = "Enhanced Voice Transcription Tool with OpenAI GPT-4o Transcribe"
 

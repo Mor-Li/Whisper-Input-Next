@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="./VERSION">
-    <img src="https://img.shields.io/badge/version-3.1.0-blue.svg" alt="Version" />
+    <img src="https://img.shields.io/badge/version-3.2.0-blue.svg" alt="Version" />
   </a>
   <a href="https://www.python.org/">
     <img src="https://img.shields.io/badge/python-3.12+-green.svg" alt="Python" />
@@ -27,14 +27,20 @@ This project is based on [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/
 
 ## ✨ Key Features
 
+### 🔥 NEW in v3.2.0: Doubao Streaming ASR
+- **Real-time Streaming Transcription**: Powered by ByteDance's Doubao Seed ASR 2.0, transcription appears as you speak
+- **Floating Preview Window**: Shows pending text in real-time near your input field, like an IME
+- **Ultra-low Latency**: Text is typed immediately when confirmed, no waiting for recording to finish
+- **Now Default for Ctrl+F**: The best voice input experience, set as default (configurable)
+
 ### 🎯 Core Functions
-- **Multi-platform Transcription Services**: Support for OpenAI GPT-4o transcribe, GROQ, SiliconFlow, local whisper.cpp
-- **Smart Hotkeys**: Ctrl+F (OpenAI high-quality) / Ctrl+I (local cost-saving mode)
+- **Multi-platform Transcription Services**: Doubao Streaming ASR (default), OpenAI GPT-4o transcribe, local whisper.cpp
+- **Smart Hotkeys**: Ctrl+F (Doubao streaming, default) / Ctrl+I (local cost-saving mode)
 - **Audio Archive**: Automatically save all recordings, support history playback
 - **Failure Retry**: Intelligent error handling and retry mechanism
 
 ### 🔧 Technical Features
-- **Dual Processor Architecture**: OpenAI + Local processors working simultaneously
+- **Dual Processor Architecture**: Streaming + Batch processors working simultaneously
 - **180s Long Audio Support**: Support up to 3 minutes of continuous recording
 - **Smart Status Indicators**: Simple numeric status display (0, 1, !)
 - **Cache System**: Audio archive with transcription result caching
@@ -126,17 +132,22 @@ chmod +x start.sh
 Configure the following parameters in the `.env` file:
 
 ```bash
-# Service platform selection (recommend using our maintained dual-platform configuration)
-SERVICE_PLATFORM=openai&local  # Our primarily maintained configuration
+# ============ Doubao Streaming ASR (Recommended, Default) ============
+# Get your API keys from: https://www.volcengine.com/experience/ark?mode=voice&modelId=doubao-seed-asr-2-0&tab=ASR
+DOUBAO_APP_KEY=your_app_key_here
+DOUBAO_ACCESS_KEY=your_access_key_here
 
-# OpenAI configuration (required)
+# Transcription service selection: "doubao" (default, streaming) or "openai" (batch)
+TRANSCRIPTION_SERVICE=doubao
+
+# ============ OpenAI Configuration (Optional, for batch mode) ============
 OFFICIAL_OPENAI_API_KEY=sk-proj-xxx
 
-# Local whisper.cpp configuration (required for local transcription)
+# ============ Local whisper.cpp (Optional, for Ctrl+I) ============
 WHISPER_CLI_PATH=/path/to/whisper.cpp/build/bin/whisper-cli
 WHISPER_MODEL_PATH=models/ggml-large-v3.bin
 
-# Keyboard shortcut configuration
+# ============ Keyboard & System Configuration ============
 TRANSCRIPTIONS_BUTTON=f
 TRANSLATIONS_BUTTON=ctrl
 SYSTEM_PLATFORM=mac  # mac/win
@@ -147,10 +158,10 @@ ADD_SYMBOL=false
 OPTIMIZE_RESULT=false
 ```
 
-**Important Note**: 
-- This project primarily maintains `SERVICE_PLATFORM=openai&local` configuration
-- This is our recommended and most thoroughly tested configuration
-- Other single-platform configurations (groq, siliconflow, etc.) are maintained for compatibility only
+**Important Notes**:
+- **Doubao Streaming ASR** is now the default and recommended transcription service
+- Get your Doubao API keys from [Volcengine Console](https://www.volcengine.com/experience/ark?mode=voice&modelId=doubao-seed-asr-2-0&tab=ASR)
+- Set `TRANSCRIPTION_SERVICE=openai` to use OpenAI batch mode instead
 
 ### Quick Start with Aliases (Recommended)
 
@@ -167,8 +178,10 @@ Replace `/path/to/Whisper-Input-Next` with your actual project path.
 
 | Hotkey | Function | Service | Features |
 |--------|----------|---------|-----------|
-| `Ctrl+F` | High-quality transcription | OpenAI GPT-4o transcribe | Built-in punctuation, highest quality |
+| `Ctrl+F` | **Real-time streaming transcription** | Doubao Seed ASR 2.0 (default) | Ultra-low latency, floating preview, text appears as you speak |
 | `Ctrl+I` | Local transcription | whisper.cpp | Offline processing, privacy protection |
+
+> **Note**: Set `TRANSCRIPTION_SERVICE=openai` in `.env` to use OpenAI GPT-4o transcribe instead of Doubao for Ctrl+F.
 
 ### Status Indicators
 
@@ -201,6 +214,8 @@ The program displays concise status indicators at the cursor position during run
 ## 🛠️ Development Status
 
 ### ✅ Completed Features
+- [x] **Doubao Streaming ASR integration** *(NEW in v3.2.0)*
+- [x] **Floating preview window for real-time feedback** *(NEW in v3.2.0)*
 - [x] OpenAI GPT-4o transcribe integration
 - [x] Audio archive system
 - [x] Local whisper support
@@ -256,6 +271,7 @@ python main.py
 ## 🙏 Acknowledgments
 
 - Thanks to [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/Whisper-Input) for the original project foundation
+- Thanks to [ByteDance/Volcengine](https://www.volcengine.com/) for the excellent Doubao Seed ASR 2.0 streaming API
 - Thanks to OpenAI for providing excellent transcription API services
 - Thanks to [whisper.cpp](https://github.com/ggerganov/whisper.cpp) community for local processing support
 - Thanks to all contributors and users for their support
