@@ -9,6 +9,7 @@ from AppKit import (
     NSFloatingWindowLevel,
     NSFont,
     NSMakeRect,
+    NSMakeSize,
     NSPanel,
     NSTextField,
     NSWindowStyleMaskBorderless,
@@ -121,12 +122,18 @@ class FloatingPreviewWindow:
         self._font_size = font_size
         self._is_visible = False
         self._follow_caret = True  # 是否跟随光标
+        self._padding_h = 12  # 水平内边距
+        self._padding_v = 8   # 垂直内边距
 
     def show(self) -> None:
         """显示浮动窗口"""
         def _show() -> None:
             if self._panel is None:
                 self._create_panel()
+
+            # 清空上次的文字
+            if self._text_field is not None:
+                self._text_field.setStringValue_("正在聆听...")
 
             # 尝试定位到光标位置
             self._position_near_caret()
@@ -243,8 +250,10 @@ class FloatingPreviewWindow:
         layer.setMasksToBounds_(True)
 
         # 创建文本标签
+        padding_h = 12  # 水平内边距
+        padding_v = 8   # 垂直内边距
         self._text_field = NSTextField.alloc().initWithFrame_(
-            NSMakeRect(15, 10, width - 30, height - 20)
+            NSMakeRect(padding_h, padding_v, width - padding_h * 2, height - padding_v * 2)
         )
         self._text_field.setStringValue_("正在聆听...")
         self._text_field.setBezeled_(False)
@@ -255,7 +264,15 @@ class FloatingPreviewWindow:
         self._text_field.setFont_(NSFont.systemFontOfSize_(self._font_size))
         self._text_field.setAlignment_(1)  # NSTextAlignmentCenter
 
+        # 启用自动换行
+        self._text_field.cell().setWraps_(True)
+        self._text_field.cell().setLineBreakMode_(0)  # NSLineBreakByWordWrapping
+
         content_view.addSubview_(self._text_field)
+
+        # 保存内边距供后续使用
+        self._padding_h = padding_h
+        self._padding_v = padding_v
 
     def _adjust_size(self) -> None:
         """根据文字内容调整窗口大小（保持当前位置）"""
@@ -266,24 +283,45 @@ class FloatingPreviewWindow:
         if not text:
             return
 
-        # 简单估算宽度（每个字符约 font_size * 0.8 的宽度）
-        char_count = len(text)
-        estimated_width = min(char_count * self._font_size * 0.8 + 60, self._max_width)
-        estimated_width = max(estimated_width, 200)  # 最小宽度
+        cell = self._text_field.cell()
+
+        # 先用最大宽度计算文本需要的高度
+        max_text_width = self._max_width - self._padding_h * 2
+        cell_size_at_max = cell.cellSizeForBounds_(NSMakeRect(0, 0, max_text_width, 10000))
+
+        # 判断是否需要换行（高度超过单行）
+        single_line_height = self._font_size + 6
+        needs_wrap = cell_size_at_max.height > single_line_height * 1.5
+
+        if needs_wrap:
+            # 需要换行：使用最大宽度
+            new_width = self._max_width
+            text_height = cell_size_at_max.height
+        else:
+            # 单行：根据内容调整宽度
+            # 计算单行文本的实际宽度
+            cell_size_single = cell.cellSizeForBounds_(NSMakeRect(0, 0, 10000, single_line_height))
+            content_width = cell_size_single.width + self._padding_h * 2 + 10
+            new_width = max(min(content_width, self._max_width), 200)
+            text_height = single_line_height
+
+        # 窗口高度 = 文本高度 + 上下内边距
+        new_height = text_height + self._padding_v * 2
+        new_height = max(new_height, 36)  # 最小高度
 
         # 获取当前位置
         frame = self._panel.frame()
 
-        # 更新窗口大小（保持左边位置不变）
-        new_width = estimated_width
+        # 高度变化时，调整 y 坐标使窗口向下扩展（保持顶部位置不变）
+        new_y = frame.origin.y + frame.size.height - new_height
 
         # 更新窗口大小
         self._panel.setFrame_display_(
-            NSMakeRect(frame.origin.x, frame.origin.y, new_width, frame.size.height),
+            NSMakeRect(frame.origin.x, new_y, new_width, new_height),
             True,
         )
 
         # 更新文本框大小
         self._text_field.setFrame_(
-            NSMakeRect(15, 10, new_width - 30, frame.size.height - 20)
+            NSMakeRect(self._padding_h, self._padding_v, new_width - self._padding_h * 2, new_height - self._padding_v * 2)
         )
