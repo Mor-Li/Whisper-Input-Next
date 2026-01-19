@@ -20,6 +20,7 @@ from src.transcription.senseVoiceSmall import SenseVoiceSmallProcessor
 from src.transcription.local_whisper import LocalWhisperProcessor
 from src.transcription.doubao_streaming import DoubaoStreamingProcessor
 from src.ui.status_bar import StatusBarController
+from src.ui.floating_preview import FloatingPreviewWindow
 
 # 版本信息
 __version__ = "3.1.0"
@@ -59,6 +60,7 @@ class VoiceAssistant:
         self._current_state = InputState.IDLE
 
         self.status_controller = StatusBarController()
+        self.floating_preview = FloatingPreviewWindow()
         self.max_auto_retries = int(os.getenv("AUTO_RETRY_LIMIT", "5"))
 
         # 转录服务配置: "doubao" (默认，流式) 或 "openai" (批量)
@@ -390,6 +392,9 @@ class VoiceAssistant:
         """运行豆包流式转录"""
         logger.info("🎤 开始豆包流式转录...")
 
+        # 显示浮动预览窗口
+        self.floating_preview.show()
+
         def on_definite_text(text: str):
             """收到已确定的文本时，直接输入到当前应用"""
             if text:
@@ -397,17 +402,19 @@ class VoiceAssistant:
                 self.keyboard_manager.type_text(text, None)
 
         def on_pending_text(text: str):
-            """收到待确定的文本（不处理，只记录日志）"""
-            pass  # 不在状态栏显示，不做任何处理
+            """收到待确定的文本，显示在浮动窗口"""
+            self.floating_preview.update_text(text)
 
         def on_complete():
             """转录完成"""
             logger.info("✅ 豆包流式转录完成")
+            self.floating_preview.hide()
             self.keyboard_manager.reset_state()
 
         def on_error(error: str):
             """发生错误"""
             logger.error(f"❌ 豆包流式转录错误: {error}")
+            self.floating_preview.hide()
 
         # 豆包 API 只支持 16000Hz，stream_audio_chunks 会自动重采样
         await self.doubao_processor.process_audio_stream(
@@ -422,6 +429,7 @@ class VoiceAssistant:
     def stop_doubao_streaming(self):
         """停止豆包流式识别"""
         logger.info("🛑 停止豆包流式转录...")
+        self.floating_preview.hide()
         self.audio_recorder.stop_streaming_recording()
 
     def reset_state(self):
