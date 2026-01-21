@@ -32,6 +32,7 @@ This project is based on [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/
 - **Floating Preview Window**: Shows pending text in real-time near your input field, like an IME
 - **Ultra-low Latency**: Text is typed immediately when confirmed, no waiting for recording to finish
 - **Now Default for Ctrl+F**: The best voice input experience, set as default (configurable)
+- 👉 [How to get your API keys](#how-to-get-doubao-api-keys)
 
 ### 🎯 Core Functions
 - **Multi-platform Transcription Services**: Doubao Streaming ASR (default), OpenAI GPT-4o transcribe, local whisper.cpp
@@ -158,6 +159,7 @@ ADD_SYMBOL=false
 OPTIMIZE_RESULT=false
 ```
 
+<a id="how-to-get-doubao-api-keys"></a>
 **How to get Doubao API keys**:
 
 1. Go to [Volcengine Console - Speech Recognition](https://console.volcengine.com/ark/region:ark+cn-beijing/tts/speechRecognition)
