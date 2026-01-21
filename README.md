@@ -133,9 +133,9 @@ Configure the following parameters in the `.env` file:
 
 ```bash
 # ============ Doubao Streaming ASR (Recommended, Default) ============
-# Get your API keys from: https://www.volcengine.com/experience/ark?mode=voice&modelId=doubao-seed-asr-2-0&tab=ASR
-DOUBAO_APP_KEY=your_app_key_here
-DOUBAO_ACCESS_KEY=your_access_key_here
+# Get your API keys from Volcengine Console (see screenshot below)
+DOUBAO_APP_KEY=your_app_id_here        # APP ID from console
+DOUBAO_ACCESS_KEY=your_access_token_here  # Access Token from console
 
 # Transcription service selection: "doubao" (default, streaming) or "openai" (batch)
 TRANSCRIPTION_SERVICE=doubao
@@ -158,9 +158,17 @@ ADD_SYMBOL=false
 OPTIMIZE_RESULT=false
 ```
 
+**How to get Doubao API keys**:
+
+1. Go to [Volcengine Console - Speech Recognition](https://console.volcengine.com/ark/region:ark+cn-beijing/tts/speechRecognition)
+2. Find your **APP ID** and **Access Token** in the "服务接口认证信息" section (see screenshot below)
+
+<p align="center">
+  <img src="assets/images/volcengine_doubao_api_keys.png" alt="Volcengine Doubao API Keys" width="800" />
+</p>
+
 **Important Notes**:
 - **Doubao Streaming ASR** is now the default and recommended transcription service
-- Get your Doubao API keys from [Volcengine Console](https://www.volcengine.com/experience/ark?mode=voice&modelId=doubao-seed-asr-2-0&tab=ASR)
 - Set `TRANSCRIPTION_SERVICE=openai` to use OpenAI batch mode instead
 
 ### Quick Start with Aliases (Recommended)
