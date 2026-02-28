@@ -299,10 +299,16 @@ class DoubaoStreamingProcessor:
     async def disconnect(self):
         """断开连接"""
         self._is_connected = False
-        if self._ws and not self._ws.closed:
-            await self._ws.close()
-        if self._session and not self._session.closed:
-            await self._session.close()
+        try:
+            if self._ws and not self._ws.closed:
+                await self._ws.close()
+        except Exception:
+            pass
+        try:
+            if self._session and not self._session.closed:
+                await self._session.close()
+        except Exception:
+            pass
         self._ws = None
         self._session = None
 
@@ -381,6 +387,10 @@ class DoubaoStreamingProcessor:
         self._sample_rate = sample_rate
         logger.info(f"使用采样率: {sample_rate}Hz")
 
+        # 确保旧连接已清理
+        if self._is_connected or self._ws or self._session:
+            await self.disconnect()
+
         if not await self.connect():
             on_error("连接失败")
             return
@@ -403,15 +413,16 @@ class DoubaoStreamingProcessor:
                     chunk_count += 1
                     logger.debug(f"📤 发送音频块 #{chunk_count}: {len(chunk)} bytes")
                     await self.send_audio_chunk(chunk, is_last=False)
-                    await asyncio.sleep(SEGMENT_DURATION_MS / 1000)
                 # 发送最后一包
                 logger.info(f"📤 发送完成，共 {chunk_count} 个音频块，发送结束标记")
                 await self.send_audio_chunk(b"", is_last=True)
 
             # 启动接收任务
             recv_count = 0
+            consecutive_errors = 0
+            MAX_CONSECUTIVE_ERRORS = 3
             async def receiver():
-                nonlocal last_definite, recv_count
+                nonlocal last_definite, recv_count, consecutive_errors
                 logger.info("📥 开始接收结果...")
                 while True:
                     result = await self.receive_result()
@@ -422,10 +433,15 @@ class DoubaoStreamingProcessor:
                     logger.debug(f"📥 收到结果 #{recv_count}: definite='{result.definite_text}' pending='{result.pending_text}' final={result.is_final}")
 
                     if result.error:
+                        consecutive_errors += 1
                         on_error(result.error)
-                        if result.is_final:
+                        if result.is_final or consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                            if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                                logger.error(f"连续 {consecutive_errors} 次错误，停止接收")
                             break
                         continue
+
+                    consecutive_errors = 0  # 成功接收，重置错误计数
 
                     # 处理 definite 文本（只输入新增部分）
                     if result.definite_text and result.definite_text != last_definite:
