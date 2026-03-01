@@ -23,7 +23,7 @@ from ..utils.logger import logger
 
 # 常量定义
 DEFAULT_SAMPLE_RATE = 16000
-SEGMENT_DURATION_MS = 200  # 每包音频时长（毫秒）
+SEGMENT_DURATION_MS = 100  # 每包音频时长（毫秒）
 
 
 class ProtocolVersion:
