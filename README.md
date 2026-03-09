@@ -21,6 +21,15 @@
 
 An intelligent voice transcription input tool supporting multiple transcription services and high-quality speech recognition features.
 
+## 💰 Why Pay $12/Month? Use Open Source Instead!
+
+**Typeless charges $12/month** for their voice keyboard, but you know what? This open-source project does the same thing for **FREE** - you only pay for the underlying API costs (Doubao ASR or OpenAI GPT-4o transcribe), which is incredibly cheap compared to Typeless's subscription.
+
+- Typeless: $144/year subscription + you don't own the service
+- **Whisper-Input-Next**: $0 + only pay for what you use (Doubao streaming ASR is super cheap!)
+
+Stop renting your tools. Own them.
+
 ## 🚀 Project Background
 
 This project is based on [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/Whisper-Input) for secondary development. The original project has been inactive for months, so we have made extensive feature expansions and architectural optimizations, adding important features like OpenAI GPT-4o transcribe integration, audio archiving, local whisper support, and more. [Why use this project?](./docs/[V3.0.0]_知乎blog.md)
