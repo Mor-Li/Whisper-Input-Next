@@ -119,7 +119,7 @@ def smart_split_audio(audio_path: str, output_dir: str) -> list[tuple[str, float
         cmd = [
             "ffmpeg", "-y", "-i", audio_path,
             "-ss", str(start), "-to", str(end),
-            "-c", "copy", output_path
+            "-acodec", "libmp3lame", "-q:a", "2", output_path
         ]
         subprocess.run(cmd, capture_output=True)
         chunk_info.append((output_path, start))
