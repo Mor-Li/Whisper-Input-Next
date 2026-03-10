@@ -13,7 +13,8 @@ from typing import AsyncGenerator, Optional
 # 允许的设备关键字（按优先级从高到低）
 # 只允许这些设备，其他设备不使用
 ALLOWED_DEVICE_KEYWORDS = [
-    "external microphone",    # 外接麦克风/耳机（最高优先级）
+    "wireless mic",           # DJI Mic 无线麦克风（最高优先级）
+    "external microphone",    # 外接麦克风/耳机
     "macbook pro microphone", # 内置麦克风
     "airpods",                # AirPods 蓝牙耳机
 ]
