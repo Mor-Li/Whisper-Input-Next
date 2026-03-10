@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="./VERSION">
-    <img src="https://img.shields.io/badge/version-3.2.0-blue.svg" alt="Version" />
+    <img src="https://img.shields.io/badge/version-3.3.0-blue.svg" alt="Version" />
   </a>
   <a href="https://www.python.org/">
     <img src="https://img.shields.io/badge/python-3.12+-green.svg" alt="Python" />
@@ -36,10 +36,14 @@ This project is based on [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/
 
 ## ✨ Key Features
 
-### 🔥 NEW in v3.2.0: Doubao Streaming ASR
+### 🔥 NEW in v3.3.0: Two-Pass Recognition & Accuracy Boost
+- **Two-Pass Recognition**: Enables `enable_nonstream` for sentence-level re-recognition using the higher-accuracy nostream model during speech pauses, significantly improving transcription quality
+- **Deferred Text Output**: All text stays in floating preview during recording; final text is pasted only after recording stops, allowing full ASR context optimization
+- **DJI Wireless Mic Support**: Auto-detects and prioritizes DJI Wireless Microphone as input device
+
+### Doubao Streaming ASR (since v3.2.0)
 - **Real-time Streaming Transcription**: Powered by ByteDance's Doubao Seed ASR 2.0, transcription appears as you speak
 - **Floating Preview Window**: Shows pending text in real-time near your input field, like an IME
-- **Ultra-low Latency**: Text is typed immediately when confirmed, no waiting for recording to finish
 - **Now Default for Ctrl+F**: The best voice input experience, set as default (configurable)
 - 👉 [How to get your API keys](#how-to-get-doubao-api-keys)
 
@@ -233,8 +237,11 @@ The program displays concise status indicators at the cursor position during run
 ## 🛠️ Development Status
 
 ### ✅ Completed Features
-- [x] **Doubao Streaming ASR integration** *(NEW in v3.2.0)*
-- [x] **Floating preview window for real-time feedback** *(NEW in v3.2.0)*
+- [x] **Two-pass recognition for higher accuracy** *(NEW in v3.3.0)*
+- [x] **Deferred text output with full-context optimization** *(NEW in v3.3.0)*
+- [x] **DJI Wireless Mic auto-detection** *(NEW in v3.3.0)*
+- [x] **Doubao Streaming ASR integration** *(v3.2.0)*
+- [x] **Floating preview window for real-time feedback** *(v3.2.0)*
 - [x] OpenAI GPT-4o transcribe integration
 - [x] Audio archive system
 - [x] Local whisper support
@@ -300,6 +307,26 @@ python main.py
 - **Project Address**: https://github.com/Mor-Li/Whisper-Input-Next  
 - **Issue Reports**: [Issues](https://github.com/Mor-Li/Whisper-Input-Next/issues)
 - **Feature Suggestions**: [Discussions](https://github.com/Mor-Li/Whisper-Input-Next/discussions)
+
+## 📋 Changelog
+
+### v3.3.0 (2026-03-11)
+- **Two-pass recognition**: Enable `enable_nonstream` for sentence-level re-recognition with nostream model, significantly improving accuracy (e.g. "广告位" → "光标位置")
+- **Deferred text output**: All text stays in floating preview during recording; final text pasted only after stop, allowing full ASR context optimization
+- **DJI Wireless Mic support**: Auto-detect and prioritize DJI Wireless Microphone as highest priority input device
+- **Lower latency**: Reduce streaming chunk size from 200ms to 100ms
+- **Faster streaming**: Remove artificial delays in audio packet sending
+
+### v3.2.0 (2025-07-27)
+- **Doubao Streaming ASR**: Real-time streaming transcription powered by ByteDance Seed ASR 2.0
+- **Floating preview window**: Shows pending text in real-time near input field
+- **Auto audio device switching**: Priority-based microphone selection
+
+### v3.0.0
+- OpenAI GPT-4o transcribe integration
+- Audio archive system
+- Local whisper.cpp support
+- Dual processor architecture
 
 ---
 
