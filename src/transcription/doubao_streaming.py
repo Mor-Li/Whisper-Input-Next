@@ -130,7 +130,8 @@ class DoubaoStreamingProcessor:
                 "enable_punc": True,     # 启用标点
                 "enable_ddc": True,      # 语义顺滑
                 "show_utterances": True, # 显示分句信息
-                "result_type": "full"    # 全量返回
+                "result_type": "full",   # 全量返回
+                "enable_nonstream": True # 二遍识别：停顿时用 nostream 模型重新识别该句，提升准确率
             }
         }
 
@@ -367,8 +368,8 @@ class DoubaoStreamingProcessor:
     async def process_audio_stream(
         self,
         audio_chunk_generator: AsyncGenerator[bytes, None],
-        on_definite_text: Callable[[str], None],
-        on_pending_text: Callable[[str], None],
+        on_preview_text: Callable[[str], None],
+        on_final_text: Callable[[str], None],
         on_complete: Callable[[], None],
         on_error: Callable[[str], None],
         sample_rate: int = DEFAULT_SAMPLE_RATE
@@ -376,10 +377,14 @@ class DoubaoStreamingProcessor:
         """
         流式处理音频
 
+        录音期间所有文本（definite + pending）仅通过 on_preview_text 展示在悬浮框中，
+        不会提前输入到目标应用。只有在流式结束后，才通过 on_final_text 一次性输出最终文本。
+        这样可以让豆包 ASR 充分利用全局上下文优化，避免前面已输入的文字无法被后续修正。
+
         Args:
             audio_chunk_generator: 异步生成器，yield 音频块 (bytes)
-            on_definite_text: 收到已确定的文本时调用
-            on_pending_text: 收到未确定的文本时调用（用于状态栏预览）
+            on_preview_text: 收到文本更新时调用（definite+pending 全量预览）
+            on_final_text: 流式结束后调用，传入最终完整文本
             on_complete: 转录完成时调用
             on_error: 发生错误时调用
             sample_rate: 音频采样率（默认 16000）
@@ -402,7 +407,7 @@ class DoubaoStreamingProcessor:
                 on_error(init_result.error)
                 return
 
-            last_definite = ""
+            final_text = ""
 
             # 启动发送任务
             chunk_count = 0
@@ -422,7 +427,7 @@ class DoubaoStreamingProcessor:
             consecutive_errors = 0
             MAX_CONSECUTIVE_ERRORS = 3
             async def receiver():
-                nonlocal last_definite, recv_count, consecutive_errors
+                nonlocal final_text, recv_count, consecutive_errors
                 logger.info("📥 开始接收结果...")
                 while True:
                     result = await self.receive_result()
@@ -443,24 +448,15 @@ class DoubaoStreamingProcessor:
 
                     consecutive_errors = 0  # 成功接收，重置错误计数
 
-                    # 处理 definite 文本（只输入新增部分）
-                    if result.definite_text and result.definite_text != last_definite:
-                        if result.definite_text.startswith(last_definite):
-                            new_part = result.definite_text[len(last_definite):]
-                            if new_part:
-                                logger.info(f"✅ 新确定文本: '{new_part}'")
-                                on_definite_text(new_part)
-                        else:
-                            logger.info(f"✅ 确定文本: '{result.definite_text}'")
-                            on_definite_text(result.definite_text)
-                        last_definite = result.definite_text
-
-                    # 处理 pending 文本（显示在状态栏）
-                    if result.pending_text:
-                        on_pending_text(result.pending_text)
+                    # 合并 definite + pending 作为当前全量预览
+                    current_text = result.definite_text + result.pending_text
+                    if current_text:
+                        on_preview_text(current_text)
+                        # 持续更新最终文本（每次都取最新的全量文本）
+                        final_text = current_text
 
                     if result.is_final:
-                        logger.info(f"📥 接收完成，共收到 {recv_count} 个结果")
+                        logger.info(f"📥 接收完成，共收到 {recv_count} 个结果，最终文本: '{final_text}'")
                         break
 
             # 并行执行发送和接收
@@ -468,6 +464,11 @@ class DoubaoStreamingProcessor:
             receiver_task = asyncio.create_task(receiver())
 
             await asyncio.gather(sender_task, receiver_task)
+
+            # 流式结束后一次性输出最终文本
+            if final_text:
+                on_final_text(final_text)
+
             on_complete()
 
         except Exception as e:
@@ -502,22 +503,22 @@ async def test_streaming(audio_file: str):
             chunk = audio_data[i:i + samples_per_chunk]
             yield chunk.tobytes()
 
-    def on_definite(text):
-        print(f"[确定] {text}", end="", flush=True)
+    def on_preview(text):
+        print(f"\r[预览] {text[:80]}", end="", flush=True)
 
-    def on_pending(text):
-        print(f"\r[识别中] {text[:50]}...", end="", flush=True)
+    def on_final(text):
+        print(f"\n[最终] {text}")
 
     def on_complete():
-        print("\n[完成]")
+        print("[完成]")
 
     def on_error(error):
         print(f"\n[错误] {error}")
 
     await processor.process_audio_stream(
         audio_generator(),
-        on_definite,
-        on_pending,
+        on_preview,
+        on_final,
         on_complete,
         on_error
     )

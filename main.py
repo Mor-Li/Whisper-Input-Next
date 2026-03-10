@@ -395,15 +395,15 @@ class VoiceAssistant:
         # 显示浮动预览窗口
         self.floating_preview.show()
 
-        def on_definite_text(text: str):
-            """收到已确定的文本时，直接输入到当前应用"""
-            if text:
-                logger.info(f"[输入] {text}")
-                self.keyboard_manager.type_text(text, None)
-
-        def on_pending_text(text: str):
-            """收到待确定的文本，显示在浮动窗口"""
+        def on_preview_text(text: str):
+            """收到文本更新，显示在浮动预览窗口（不输入到目标应用）"""
             self.floating_preview.update_text(text)
+
+        def on_final_text(text: str):
+            """流式结束，一次性输入最终文本到目标应用"""
+            if text:
+                logger.info(f"[最终输入] {text}")
+                self.keyboard_manager.type_text(text, None)
 
         def on_complete():
             """转录完成"""
@@ -419,8 +419,8 @@ class VoiceAssistant:
         # 豆包 API 只支持 16000Hz，stream_audio_chunks 会自动重采样
         await self.doubao_processor.process_audio_stream(
             self.audio_recorder.stream_audio_chunks(target_sample_rate=16000),
-            on_definite_text,
-            on_pending_text,
+            on_preview_text,
+            on_final_text,
             on_complete,
             on_error,
             sample_rate=16000,
