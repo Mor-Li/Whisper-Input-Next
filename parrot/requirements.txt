@@ -1,0 +1,8 @@
+# parrot 额外依赖（主项目 ../requirements.txt 之外）
+# 装法: 在主项目 venv 里 pip install -r parrot/requirements.txt
+
+openai[realtime]>=2.38         # GA realtime API + websockets
+python-socks                    # websockets 走 SOCKS proxy 时需要
+pyobjc-framework-AVFoundation   # AVAudioEngine + VPIO（系统级 AEC）
+pyobjc-framework-CoreAudio      # 未来 device 选择
+scipy                           # resample_poly: VPIO 48kHz → OpenAI 24kHz
