@@ -173,7 +173,7 @@ WHISPER_MODEL_PATH=models/ggml-large-v3.bin
 # ============ Keyboard & System Configuration ============
 TRANSCRIPTIONS_BUTTON=f
 TRANSLATIONS_BUTTON=ctrl
-SYSTEM_PLATFORM=mac  # mac/win
+SYSTEM_PLATFORM=mac  # mac/linux/win
 
 # Feature switches
 CONVERT_TO_SIMPLIFIED=false
@@ -201,7 +201,7 @@ Add these aliases to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
 
 ```bash
 alias whisper_input='cd /path/to/Whisper-Input-Next && ./start.sh'
-alias whisper_input_off='tmux kill-session -t whisper-input'
+alias whisper_input_off='tmux send-keys -t whisper-input C-c 2>/dev/null; tmux kill-session -t whisper-input 2>/dev/null'
 ```
 
 Replace `/path/to/Whisper-Input-Next` with your actual project path.

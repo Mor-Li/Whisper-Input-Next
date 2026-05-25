@@ -134,7 +134,7 @@ WHISPER_MODEL_PATH=models/ggml-large-v3.bin
 # 键盘快捷键配置
 TRANSCRIPTIONS_BUTTON=f
 TRANSLATIONS_BUTTON=ctrl
-SYSTEM_PLATFORM=mac  # mac/win
+SYSTEM_PLATFORM=mac  # mac/linux/win
 
 # 功能开关
 CONVERT_TO_SIMPLIFIED=false
@@ -153,7 +153,7 @@ OPTIMIZE_RESULT=false
 
 ```bash
 alias whisper_input='cd /path/to/Whisper-Input-Next && ./start.sh'
-alias whisper_input_off='tmux kill-session -t whisper-input'
+alias whisper_input_off='tmux send-keys -t whisper-input C-c 2>/dev/null; tmux kill-session -t whisper-input 2>/dev/null'
 ```
 
 请将 `/path/to/Whisper-Input-Next` 替换为你的项目实际路径。

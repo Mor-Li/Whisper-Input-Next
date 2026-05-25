@@ -204,7 +204,12 @@ class KeyboardManager:
         pyperclip.copy(text)
         hotkey = os.getenv("PASTE_HOTKEY")
         if not hotkey:
-            hotkey = "ctrl+v" if self.system_platform in ("win", "windows", "linux") else "cmd+v"
+            if self.system_platform == "linux":
+                hotkey = "ctrl+shift+v"
+            elif self.system_platform in ("win", "windows"):
+                hotkey = "ctrl+v"
+            else:
+                hotkey = "cmd+v"
 
         normalized = hotkey.replace("+", "+").lower()
         key_map = {
