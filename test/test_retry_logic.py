@@ -94,7 +94,7 @@ def test_failure_retry_logic():
 def main():
     """主函数"""
     print("🔄 失败重试逻辑测试")
-    print("模拟: 失败(!) → 按Ctrl+F → 重试(1) → 成功")
+    print("模拟: 失败(!) → 按Win+F → 重试(1) → 成功")
     print()
     
     success = test_failure_retry_logic()
@@ -104,7 +104,7 @@ def main():
         print("🎉 失败重试逻辑测试通过!")
         print("💡 实际使用时:")
         print("   1. API失败 → 显示 '!'")
-        print("   2. 再按Ctrl+F → 显示 '1' 并重试上次音频")
+        print("   2. 再按Win+F → 显示 '1' 并重试上次音频")
         print("   3. 成功 → 输出转录文本")
     else:
         print("😞 失败重试逻辑测试失败")

@@ -74,26 +74,26 @@ class VoiceAssistant:
         self._streaming_thread: Optional[threading.Thread] = None
         self._current_streaming_archive_path: Optional[str] = None
 
-        # 根据配置选择 Ctrl+F 的处理方式
+        # 根据配置选择默认转录快捷键的处理方式
         if self.transcription_service == "doubao" and self.doubao_processor and self.doubao_processor.is_available():
-            ctrl_f_start = self.start_doubao_streaming
-            ctrl_f_stop = self.stop_doubao_streaming
-            logger.info("Ctrl+F 使用豆包流式识别")
+            default_transcription_start = self.start_doubao_streaming
+            default_transcription_stop = self.stop_doubao_streaming
+            logger.info("默认转录快捷键使用豆包流式识别")
         elif self.openai_processor is not None:
-            ctrl_f_start = self.start_openai_recording
-            ctrl_f_stop = self.stop_openai_recording
-            logger.info("Ctrl+F 使用 OpenAI 批量转录")
+            default_transcription_start = self.start_openai_recording
+            default_transcription_stop = self.stop_openai_recording
+            logger.info("默认转录快捷键使用 OpenAI 批量转录")
         else:
-            ctrl_f_start = self._show_transcription_unavailable
-            ctrl_f_stop = self._show_transcription_unavailable
-            logger.warning("Ctrl+F 不可用：豆包和 OpenAI 均未配置")
+            default_transcription_start = self._show_transcription_unavailable
+            default_transcription_stop = self._show_transcription_unavailable
+            logger.warning("默认转录快捷键不可用：豆包和 OpenAI 均未配置")
 
         self.keyboard_manager = KeyboardManager(
-            on_record_start=ctrl_f_start,    # Ctrl+F: 根据配置选择
-            on_record_stop=ctrl_f_stop,
+            on_record_start=default_transcription_start,
+            on_record_stop=default_transcription_stop,
             on_translate_start=self.start_translation_recording,  # 保留翻译功能
             on_translate_stop=self.stop_translation_recording,
-            on_kimi_start=self.start_local_recording,       # Ctrl+I: Local Whisper
+            on_kimi_start=self.start_local_recording,       # 修饰键+I: Local Whisper
             on_kimi_stop=self.stop_local_recording,
             on_reset_state=self.reset_state,
             on_state_change=self._on_state_change,
@@ -356,7 +356,7 @@ class VoiceAssistant:
         return job.processor, "unknown"
 
     def start_openai_recording(self):
-        """开始录音（OpenAI GPT-4o transcribe模式 - Ctrl+F）"""
+        """开始录音（OpenAI GPT-4o transcribe 模式）"""
         if self.openai_processor is None:
             logger.warning("OpenAI 转录不可用，请配置 OFFICIAL_OPENAI_API_KEY 或使用豆包")
             self.status_controller.show_error("OpenAI 转录不可用")
@@ -365,7 +365,7 @@ class VoiceAssistant:
         self.audio_recorder.start_recording()
 
     def stop_openai_recording(self):
-        """停止录音并处理（OpenAI GPT-4o transcribe模式 - Ctrl+F）"""
+        """停止录音并处理（OpenAI GPT-4o transcribe 模式）"""
         audio = self.audio_recorder.stop_recording()
         if audio == "TOO_SHORT":
             logger.warning("录音时长太短，状态将重置")
@@ -387,15 +387,15 @@ class VoiceAssistant:
         )
 
     def start_local_recording(self):
-        """开始录音（本地 Whisper 模式 - Ctrl+I）"""
+        """开始录音（本地 Whisper 模式）"""
         if self.local_processor is None:
-            logger.warning("本地 Whisper 不可用，请使用 Ctrl+F (OpenAI) 模式")
+            logger.warning("本地 Whisper 不可用，请使用默认转录快捷键")
             self.status_controller.show_error("Local Whisper 不可用")
             return
         self.audio_recorder.start_recording()
 
     def stop_local_recording(self):
-        """停止录音并处理（本地 Whisper 模式 - Ctrl+I）"""
+        """停止录音并处理（本地 Whisper 模式）"""
         if self.local_processor is None:
             return
         audio = self.audio_recorder.stop_recording()

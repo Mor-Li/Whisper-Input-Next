@@ -11,7 +11,7 @@ import threading
 class TestKeyboardListener:
     def __init__(self):
         self.keyboard = Controller()
-        self.ctrl_pressed = False
+        self.modifier_pressed = False
         self.f_pressed = False
         
     def type_status(self, text):
@@ -31,16 +31,16 @@ class TestKeyboardListener:
             # 检查 F 键
             if hasattr(key, 'char') and key.char == 'f':
                 self.f_pressed = True
-                if self.ctrl_pressed and self.f_pressed:
-                    print("\n检测到 Ctrl+F！")
+                if self.modifier_pressed and self.f_pressed:
+                    print("\n检测到 Win+F！")
                     # 模拟实际场景：在监听器回调中输入
                     self.type_status('0')
                     
-            # 检查 Ctrl 键
-            elif key == Key.ctrl_l or key == Key.ctrl_r:
-                self.ctrl_pressed = True
-                if self.ctrl_pressed and self.f_pressed:
-                    print("\n检测到 Ctrl+F！")
+            # 检查 Win/Super 键
+            elif key == Key.cmd or key == Key.cmd_r:
+                self.modifier_pressed = True
+                if self.modifier_pressed and self.f_pressed:
+                    print("\n检测到 Win+F！")
                     # 模拟实际场景：在监听器回调中输入
                     self.type_status('0')
                     
@@ -57,8 +57,8 @@ class TestKeyboardListener:
         try:
             if hasattr(key, 'char') and key.char == 'f':
                 self.f_pressed = False
-            elif key == Key.ctrl_l or key == Key.ctrl_r:
-                self.ctrl_pressed = False
+            elif key == Key.cmd or key == Key.cmd_r:
+                self.modifier_pressed = False
         except AttributeError:
             pass
     
@@ -69,7 +69,7 @@ class TestKeyboardListener:
         print("=" * 60)
         print("\n测试说明：")
         print("1. 将光标放在任何文本编辑器中")
-        print("2. 按 Ctrl+F 触发输入")
+        print("2. 按 Win+F 触发输入")
         print("3. 观察 '0' 是否在光标当前位置输入，还是向右移动了一个位置")
         print("4. 按 ESC 退出测试")
         print("\n重要：这模拟了实际代码中的场景 - 在监听器回调中输入")

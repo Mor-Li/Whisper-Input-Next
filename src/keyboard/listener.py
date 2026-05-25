@@ -7,9 +7,28 @@ import os
 
 
 class KeyboardManager:
+    KEY_ALIASES = {
+        "ctrl": Key.ctrl,
+        "control": Key.ctrl,
+        "cmd": Key.cmd,
+        "command": Key.cmd,
+        "win": Key.cmd,
+        "windows": Key.cmd,
+        "super": Key.cmd,
+    }
+    KEY_DISPLAY_NAMES = {
+        "ctrl": "Ctrl",
+        "control": "Ctrl",
+        "cmd": "Cmd",
+        "command": "Cmd",
+        "win": "Win",
+        "windows": "Win",
+        "super": "Win",
+    }
+
     def __init__(self, on_record_start, on_record_stop, on_translate_start, on_translate_stop, on_kimi_start, on_kimi_stop, on_reset_state, on_state_change=None):
         self.keyboard = Controller()
-        self.ctrl_pressed = False  # 改为ctrl键状态
+        self.ctrl_pressed = False  # 快捷键修饰键状态
         self.f_pressed = False  # F键状态
         self.i_pressed = False  # I键状态
         self.temp_text_length = 0  # 用于跟踪临时文本的长度
@@ -58,32 +77,73 @@ class KeyboardManager:
             logger.info("配置到Mac平台")
         
 
-        # 获取转录和翻译按钮
-        transcriptions_button = os.getenv("TRANSCRIPTIONS_BUTTON")
-        try:
-            # 字符键（如f）直接使用字符串，特殊键使用Key枚举
-            if len(transcriptions_button) == 1 and transcriptions_button.isalpha():
-                self.transcriptions_button = transcriptions_button
-            else:
-                self.transcriptions_button = Key[transcriptions_button]
-            logger.info(f"配置到转录按钮：{transcriptions_button}")
-        except KeyError:
-            logger.error(f"无效的转录按钮配置：{transcriptions_button}")
+        # 获取转录按钮和快捷键修饰键
+        self.transcriptions_button, transcriptions_display = self._resolve_button(
+            "TRANSCRIPTIONS_BUTTON",
+            "f",
+        )
+        self.translations_button, modifier_display = self._resolve_button(
+            "TRANSLATIONS_BUTTON",
+            "win",
+        )
 
-        translations_button = os.getenv("TRANSLATIONS_BUTTON")
-        try:
-            # 字符键（如f）直接使用字符串，特殊键使用Key枚举
-            if len(translations_button) == 1 and translations_button.isalpha():
-                self.translations_button = translations_button
-            else:
-                self.translations_button = Key[translations_button]
-            logger.info(f"配置到翻译按钮(与转录按钮组合)：{translations_button}")
-        except KeyError:
-            logger.error(f"无效的翻译按钮配置：{translations_button}")
-
-        logger.info(f"按 {translations_button} + {transcriptions_button} 键：切换录音状态（转录模式）")
-        logger.info(f"按 {translations_button} + I 键：切换录音状态（本地 Whisper 模式）")
+        logger.info(f"按 {modifier_display}+{transcriptions_display} 键：切换录音状态（转录模式）")
+        logger.info(f"按 {modifier_display}+I 键：切换录音状态（本地 Whisper 模式）")
         logger.info(f"两种模式都是按一下开始，再按一下结束")
+
+    def _resolve_button(self, env_name, default_value):
+        """Resolve a keyboard setting into a pynput Key or single character."""
+        button_name = (os.getenv(env_name, default_value) or default_value).strip().lower()
+        resolved = self._parse_button(button_name)
+
+        if resolved is None:
+            logger.error(f"无效的快捷键配置 {env_name}={button_name}，回退到 {default_value}")
+            button_name = default_value
+            resolved = self._parse_button(button_name)
+
+        logger.info(f"配置到快捷键 {env_name}：{button_name}")
+        return resolved, self._display_button_name(button_name)
+
+    @classmethod
+    def _parse_button(cls, button_name):
+        if len(button_name) == 1 and button_name.isalpha():
+            return button_name
+
+        if button_name in cls.KEY_ALIASES:
+            return cls.KEY_ALIASES[button_name]
+
+        try:
+            return Key[button_name]
+        except KeyError:
+            return None
+
+    @classmethod
+    def _display_button_name(cls, button_name):
+        if button_name in cls.KEY_DISPLAY_NAMES:
+            return cls.KEY_DISPLAY_NAMES[button_name]
+        if len(button_name) == 1:
+            return button_name.upper()
+        return button_name
+
+    @staticmethod
+    def _key_matches(key, configured_key):
+        if isinstance(configured_key, str):
+            return hasattr(key, "char") and key.char and key.char.lower() == configured_key
+
+        if key == configured_key:
+            return True
+
+        aliases = []
+        if configured_key == Key.ctrl:
+            aliases = [getattr(Key, "ctrl_l", None), getattr(Key, "ctrl_r", None)]
+        elif configured_key == Key.cmd:
+            aliases = [getattr(Key, "cmd_l", None), getattr(Key, "cmd_r", None)]
+        elif configured_key == Key.shift:
+            aliases = [getattr(Key, "shift_l", None), getattr(Key, "shift_r", None)]
+        elif configured_key == Key.alt:
+            aliases = [getattr(Key, "alt_l", None), getattr(Key, "alt_r", None)]
+
+        return any(alias is not None and key == alias for alias in aliases)
     
     @property
     def state(self):
@@ -356,40 +416,28 @@ class KeyboardManager:
         """按键按下时的回调"""
         try:
             # 检查转录按钮（字符键或特殊键）
-            is_transcription_key = False
-            if isinstance(self.transcriptions_button, str):
-                # 字符键
-                is_transcription_key = hasattr(key, 'char') and key.char == self.transcriptions_button
-            else:
-                # 特殊键
-                is_transcription_key = key == self.transcriptions_button
+            is_transcription_key = self._key_matches(key, self.transcriptions_button)
                 
-            # 检查翻译按钮（字符键或特殊键）
-            is_translation_key = False
-            if isinstance(self.translations_button, str):
-                # 字符键
-                is_translation_key = hasattr(key, 'char') and key.char == self.translations_button
-            else:
-                # 特殊键
-                is_translation_key = key == self.translations_button
+            # 检查快捷键修饰键（如 Win/Ctrl/Cmd）
+            is_translation_key = self._key_matches(key, self.translations_button)
             
             # 检查I键（用于本地 Whisper 模式）
             if hasattr(key, 'char') and key.char == 'i':
                 self.i_pressed = True
-                # 检查是否同时按下了ctrl+i（本地 Whisper 模式）
+                # 检查是否同时按下了修饰键+i（本地 Whisper 模式）
                 if self.ctrl_pressed and self.i_pressed:
                     self.toggle_kimi_recording()
             elif is_transcription_key:  # F键
                 self.f_pressed = True
-                # 检查是否同时按下了ctrl+f
+                # 检查是否同时按下了修饰键+f
                 if self.ctrl_pressed and self.f_pressed:
                     self.toggle_recording()
-            elif is_translation_key:  # Ctrl键
+            elif is_translation_key:  # 快捷键修饰键
                 self.ctrl_pressed = True
-                # 检查是否同时按下了ctrl+f（OpenAI GPT-4o transcribe 模式）
+                # 检查是否同时按下了修饰键+f（默认转录模式）
                 if self.ctrl_pressed and self.f_pressed:
                     self.toggle_recording()
-                # 检查是否同时按下了ctrl+i（本地 Whisper 模式）
+                # 检查是否同时按下了修饰键+i（本地 Whisper 模式）
                 elif self.ctrl_pressed and self.i_pressed:
                     self.toggle_kimi_recording()
         except AttributeError:
@@ -399,29 +447,17 @@ class KeyboardManager:
         """按键释放时的回调"""
         try:
             # 检查转录按钮（字符键或特殊键）
-            is_transcription_key = False
-            if isinstance(self.transcriptions_button, str):
-                # 字符键
-                is_transcription_key = hasattr(key, 'char') and key.char == self.transcriptions_button
-            else:
-                # 特殊键
-                is_transcription_key = key == self.transcriptions_button
+            is_transcription_key = self._key_matches(key, self.transcriptions_button)
                 
-            # 检查翻译按钮（字符键或特殊键）
-            is_translation_key = False
-            if isinstance(self.translations_button, str):
-                # 字符键
-                is_translation_key = hasattr(key, 'char') and key.char == self.translations_button
-            else:
-                # 特殊键
-                is_translation_key = key == self.translations_button
+            # 检查快捷键修饰键（如 Win/Ctrl/Cmd）
+            is_translation_key = self._key_matches(key, self.translations_button)
                 
             # 检查I键释放
             if hasattr(key, 'char') and key.char == 'i':
                 self.i_pressed = False
             elif is_transcription_key:  # F键释放
                 self.f_pressed = False
-            elif is_translation_key:  # Ctrl键释放
+            elif is_translation_key:  # 快捷键修饰键释放
                 self.ctrl_pressed = False
 
         except AttributeError:
