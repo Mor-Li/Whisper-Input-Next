@@ -72,6 +72,7 @@ This project is based on [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/
 - macOS/Linux (Windows support in development)
 - Network connection (only required for cloud services)
 - **Local whisper.cpp** (required when using local transcription features)
+- Linux: PortAudio runtime (`sudo apt install libportaudio2` on Ubuntu/Debian)
 
 ### Installation Steps
 
@@ -83,7 +84,7 @@ cd Whisper-Input-Next
 
 2. **Create Virtual Environment**
 ```bash
-python -m .venv .venv
+python -m venv .venv
 source .venv/bin/activate  # macOS/Linux
 # or .venv\\Scripts\\activate  # Windows
 ```
@@ -91,6 +92,13 @@ source .venv/bin/activate  # macOS/Linux
 3. **Install Dependencies**
 ```bash
 pip install -r requirements.txt
+```
+
+**Using uv (optional):**
+```bash
+uv venv --python 3.12
+source .venv/bin/activate
+uv pip install -r requirements.txt
 ```
 
 4. **Install Local whisper.cpp (Optional, required for local transcription)**
@@ -112,11 +120,12 @@ cd ..
 
 5. **Configure Environment Variables**
 ```bash
-cp env.example .env
+cp .env.example .env
 # Edit .env file, configure necessary parameters:
-# - OFFICIAL_OPENAI_API_KEY: OpenAI API key (required)
-# - WHISPER_CLI_PATH: whisper.cpp executable path (required for local transcription)
-# - WHISPER_MODEL_PATH: whisper model file path (required for local transcription)
+# - DOUBAO_APP_KEY / DOUBAO_ACCESS_KEY: required for Doubao streaming
+# - SYSTEM_PLATFORM: mac / linux / win
+# - OFFICIAL_OPENAI_API_KEY: optional, for OpenAI batch transcription/translation
+# - WHISPER_CLI_PATH / WHISPER_MODEL_PATH: optional, for local transcription
 ```
 
 6. **Run Program**
@@ -284,11 +293,11 @@ git clone https://github.com/Mor-Li/Whisper-Input-Next.git
 cd Whisper-Input-Next
 
 # Create development environment
-python -m venv .venv
+uv venv --python 3.12
 source .venv/bin/activate
 
 # Install dependencies
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 
 # Start development
 python main.py

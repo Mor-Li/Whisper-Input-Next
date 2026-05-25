@@ -26,12 +26,12 @@ pip-tools==7.4.1
 pycparser==2.22
 pydantic==2.10.5
 pydantic-core==2.27.2
-pynput==1.7.7
-pyobjc-core==10.3.2
-pyobjc-framework-applicationservices==10.3.2
-pyobjc-framework-cocoa==10.3.2
-pyobjc-framework-coretext==10.3.2
-pyobjc-framework-quartz==10.3.2
+pynput==1.8.2
+pyobjc-core==10.3.2; sys_platform == "darwin"
+pyobjc-framework-applicationservices==10.3.2; sys_platform == "darwin"
+pyobjc-framework-cocoa==10.3.2; sys_platform == "darwin"
+pyobjc-framework-coretext==10.3.2; sys_platform == "darwin"
+pyobjc-framework-quartz==10.3.2; sys_platform == "darwin"
 pyperclip==1.9.0
 pyproject-hooks==1.2.0
 pyqt5==5.15.11

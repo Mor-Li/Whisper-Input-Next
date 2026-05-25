@@ -17,7 +17,7 @@ echo "📝 日志将保存到: $LOG_FILE"
 # 检查.env文件是否存在
 if [ ! -f ".env" ]; then
   echo "❌ 未找到 .env 配置文件"
-  echo "请复制 env.example 到 .env 并配置您的API密钥"
+  echo "请复制 .env.example 到 .env 并配置您的API密钥"
   exit 1
 fi
 
@@ -59,7 +59,7 @@ tmux send-keys -t Whisper-Input-Next "python main.py 2>&1 | tee $LOG_FILE" C-m
 echo ""
 echo "✅ Whisper-Input-Next 已启动！"
 echo "📋 快捷键说明："
-echo "   Ctrl+F: OpenAI GPT-4 转录 (高质量)"
+echo "   Ctrl+F: 默认转录服务"
 echo "   Ctrl+I: 本地 Whisper 转录 (省钱)"
 echo ""
 echo "🔧 会话管理："

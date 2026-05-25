@@ -2,6 +2,7 @@
 .env
 .env_*
 .env.*
+!.env.example
 
 # 忽略Python缓存
 *.pyc
