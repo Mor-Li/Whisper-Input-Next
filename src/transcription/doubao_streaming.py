@@ -278,7 +278,7 @@ class DoubaoStreamingProcessor:
         try:
             self._session = aiohttp.ClientSession()
             headers = {
-                "X-Api-Resource-Id": "volc.seedasr.sauc.duration",  # 2.0版本小时版
+                "X-Api-Resource-Id": "volc.bigasr.sauc.duration",  # 2.0版本小时版
                 "X-Api-Connect-Id": str(uuid.uuid4()),
                 "X-Api-Access-Key": self.access_key,
                 "X-Api-App-Key": self.app_key

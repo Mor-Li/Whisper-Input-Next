@@ -50,9 +50,9 @@ class WhisperProcessor:
     def __init__(self):
         self.convert_to_simplified = os.getenv("CONVERT_TO_SIMPLIFIED", "false").lower() == "true"
         self.cc = OpenCC('t2s') if self.convert_to_simplified else None
-        self.symbol = SymbolProcessor()
         self.add_symbol = os.getenv("ADD_SYMBOL", "false").lower() == "true"
         self.optimize_result = os.getenv("OPTIMIZE_RESULT", "false").lower() == "true"
+        self.symbol = SymbolProcessor() if self.add_symbol or self.optimize_result else None
         self.service_platform = os.getenv("SERVICE_PLATFORM", "groq").lower()
         self.timeout_seconds = self.OPENAI_TIMEOUT if self.service_platform == "openai" else self.DEFAULT_TIMEOUT
 
@@ -158,10 +158,10 @@ class WhisperProcessor:
             # OpenAI GPT-4o transcribe 自带标点符号，无需额外处理
             if self.service_platform != "openai":
                 # 仅在 groq API 时添加标点符号
-                if self.service_platform == "groq" and self.add_symbol:
+                if self.service_platform == "groq" and self.add_symbol and self.symbol:
                     result = self.symbol.add_symbol(result)
                     logger.info(f"添加标点符号: {result}")
-                if self.optimize_result:
+                if self.optimize_result and self.symbol:
                     result = self.symbol.optimize_result(result)
                     logger.info(f"优化结果: {result}")
 

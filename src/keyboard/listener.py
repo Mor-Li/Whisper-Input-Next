@@ -7,9 +7,28 @@ import os
 
 
 class KeyboardManager:
+    KEY_ALIASES = {
+        "ctrl": Key.ctrl,
+        "control": Key.ctrl,
+        "cmd": Key.cmd,
+        "command": Key.cmd,
+        "win": Key.cmd,
+        "windows": Key.cmd,
+        "super": Key.cmd,
+    }
+    KEY_DISPLAY_NAMES = {
+        "ctrl": "Ctrl",
+        "control": "Ctrl",
+        "cmd": "Cmd",
+        "command": "Cmd",
+        "win": "Win",
+        "windows": "Win",
+        "super": "Win",
+    }
+
     def __init__(self, on_record_start, on_record_stop, on_translate_start, on_translate_stop, on_kimi_start, on_kimi_stop, on_reset_state, on_state_change=None):
         self.keyboard = Controller()
-        self.ctrl_pressed = False  # 改为ctrl键状态
+        self.ctrl_pressed = False  # 快捷键修饰键状态
         self.f_pressed = False  # F键状态
         self.i_pressed = False  # I键状态
         self.temp_text_length = 0  # 用于跟踪临时文本的长度
@@ -19,7 +38,6 @@ class KeyboardManager:
         self.is_recording = False  # toggle模式的录音状态
         self.last_key_time = 0  # 防止重复触发
         self.KEY_DEBOUNCE_TIME = 0.3  # 按键防抖时间（秒）
-        self._original_clipboard = None  # 保存原始剪贴板内容
         
         
         # 回调函数
@@ -50,41 +68,82 @@ class KeyboardManager:
         self.state_symbol_enabled = True
 
         # 获取系统平台
-        sysetem_platform = os.getenv("SYSTEM_PLATFORM")
-        if sysetem_platform == "win" :
-            self.sysetem_platform = Key.ctrl
-            logger.info("配置到Windows平台")
+        self.system_platform = os.getenv("SYSTEM_PLATFORM", "").lower()
+        if self.system_platform in ("win", "windows", "linux"):
+            self.system_modifier = Key.ctrl
+            logger.info("配置到Windows/Linux平台")
         else:
-            self.sysetem_platform = Key.cmd
+            self.system_modifier = Key.cmd
             logger.info("配置到Mac平台")
         
 
-        # 获取转录和翻译按钮
-        transcriptions_button = os.getenv("TRANSCRIPTIONS_BUTTON")
-        try:
-            # 字符键（如f）直接使用字符串，特殊键使用Key枚举
-            if len(transcriptions_button) == 1 and transcriptions_button.isalpha():
-                self.transcriptions_button = transcriptions_button
-            else:
-                self.transcriptions_button = Key[transcriptions_button]
-            logger.info(f"配置到转录按钮：{transcriptions_button}")
-        except KeyError:
-            logger.error(f"无效的转录按钮配置：{transcriptions_button}")
+        # 获取转录按钮和快捷键修饰键
+        self.transcriptions_button, transcriptions_display = self._resolve_button(
+            "TRANSCRIPTIONS_BUTTON",
+            "f",
+        )
+        self.translations_button, modifier_display = self._resolve_button(
+            "TRANSLATIONS_BUTTON",
+            "win",
+        )
 
-        translations_button = os.getenv("TRANSLATIONS_BUTTON")
-        try:
-            # 字符键（如f）直接使用字符串，特殊键使用Key枚举
-            if len(translations_button) == 1 and translations_button.isalpha():
-                self.translations_button = translations_button
-            else:
-                self.translations_button = Key[translations_button]
-            logger.info(f"配置到翻译按钮(与转录按钮组合)：{translations_button}")
-        except KeyError:
-            logger.error(f"无效的翻译按钮配置：{translations_button}")
-
-        logger.info(f"按 {translations_button} + {transcriptions_button} 键：切换录音状态（OpenAI GPT-4o transcribe 模式）")
-        logger.info(f"按 {translations_button} + I 键：切换录音状态（本地 Whisper 模式）")
+        logger.info(f"按 {modifier_display}+{transcriptions_display} 键：切换录音状态（转录模式）")
+        logger.info(f"按 {modifier_display}+I 键：切换录音状态（本地 Whisper 模式）")
         logger.info(f"两种模式都是按一下开始，再按一下结束")
+
+    def _resolve_button(self, env_name, default_value):
+        """Resolve a keyboard setting into a pynput Key or single character."""
+        button_name = (os.getenv(env_name, default_value) or default_value).strip().lower()
+        resolved = self._parse_button(button_name)
+
+        if resolved is None:
+            logger.error(f"无效的快捷键配置 {env_name}={button_name}，回退到 {default_value}")
+            button_name = default_value
+            resolved = self._parse_button(button_name)
+
+        logger.info(f"配置到快捷键 {env_name}：{button_name}")
+        return resolved, self._display_button_name(button_name)
+
+    @classmethod
+    def _parse_button(cls, button_name):
+        if len(button_name) == 1 and button_name.isalpha():
+            return button_name
+
+        if button_name in cls.KEY_ALIASES:
+            return cls.KEY_ALIASES[button_name]
+
+        try:
+            return Key[button_name]
+        except KeyError:
+            return None
+
+    @classmethod
+    def _display_button_name(cls, button_name):
+        if button_name in cls.KEY_DISPLAY_NAMES:
+            return cls.KEY_DISPLAY_NAMES[button_name]
+        if len(button_name) == 1:
+            return button_name.upper()
+        return button_name
+
+    @staticmethod
+    def _key_matches(key, configured_key):
+        if isinstance(configured_key, str):
+            return hasattr(key, "char") and key.char and key.char.lower() == configured_key
+
+        if key == configured_key:
+            return True
+
+        aliases = []
+        if configured_key == Key.ctrl:
+            aliases = [getattr(Key, "ctrl_l", None), getattr(Key, "ctrl_r", None)]
+        elif configured_key == Key.cmd:
+            aliases = [getattr(Key, "cmd_l", None), getattr(Key, "cmd_r", None)]
+        elif configured_key == Key.shift:
+            aliases = [getattr(Key, "shift_l", None), getattr(Key, "shift_r", None)]
+        elif configured_key == Key.alt:
+            aliases = [getattr(Key, "alt_l", None), getattr(Key, "alt_r", None)]
+
+        return any(alias is not None and key == alias for alias in aliases)
     
     @property
     def state(self):
@@ -201,16 +260,40 @@ class KeyboardManager:
         self.error_message = error_message
         self.state = InputState.ERROR
     
-    def _save_clipboard(self):
-        """保存当前剪贴板内容"""
-        if self._original_clipboard is None:
-            self._original_clipboard = pyperclip.paste()
+    def _paste_text_from_clipboard(self, text: str) -> None:
+        pyperclip.copy(text)
+        hotkey = os.getenv("PASTE_HOTKEY")
+        if not hotkey:
+            if self.system_platform == "linux":
+                hotkey = "ctrl+shift+v"
+            elif self.system_platform in ("win", "windows"):
+                hotkey = "ctrl+v"
+            else:
+                hotkey = "cmd+v"
 
-    def _restore_clipboard(self):
-        """恢复原始剪贴板内容"""
-        if self._original_clipboard is not None:
-            pyperclip.copy(self._original_clipboard)
-            self._original_clipboard = None
+        normalized = hotkey.replace("+", "+").lower()
+        key_map = {
+            "ctrl": Key.ctrl,
+            "control": Key.ctrl,
+            "cmd": Key.cmd,
+            "command": Key.cmd,
+            "shift": Key.shift,
+            "alt": Key.alt,
+            "option": Key.alt,
+        }
+        parts = [part for part in normalized.split("+") if part]
+        modifiers = [key_map[part] for part in parts[:-1] if part in key_map]
+        final_key = parts[-1] if parts else "v"
+
+        try:
+            for modifier in modifiers:
+                self.keyboard.press(modifier)
+            self.keyboard.press(final_key)
+            self.keyboard.release(final_key)
+            for modifier in reversed(modifiers):
+                self.keyboard.release(modifier)
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(f"无法发送粘贴快捷键 {hotkey}: {exc}") from exc
 
     def type_text(self, text, error_message=None):
         """将文字输入到当前光标位置
@@ -236,14 +319,7 @@ class KeyboardManager:
         try:
             logger.info("正在输入转录文本...")
             self._delete_previous_text()
-            
-            # 最终转录文本通过剪贴板输入
-            pyperclip.copy(text)
-            
-            # 模拟 Ctrl + V 粘贴文本
-            with self.keyboard.pressed(self.sysetem_platform):
-                self.keyboard.press('v')
-                self.keyboard.release('v')
+            self._paste_text_from_clipboard(text)
             
             # 等待一小段时间确保文本已输入
             time.sleep(0.5)
@@ -287,10 +363,7 @@ class KeyboardManager:
                 logger.warning(f"直接输入状态符号失败: {e}, 文本: {text}")
         else:
             # 其他文本（如错误消息、警告等）通过剪贴板输入
-            pyperclip.copy(text)
-            with self.keyboard.pressed(self.sysetem_platform):
-                self.keyboard.press('v')
-                self.keyboard.release('v')
+            self._paste_text_from_clipboard(text)
         
         # 更新临时文本长度
         self.temp_text_length = len(text)
@@ -310,12 +383,12 @@ class KeyboardManager:
             if self.state.can_start_recording:
                 self.is_recording = True
                 self.state = InputState.RECORDING
-                logger.info("🎤 开始录音（OpenAI GPT-4o transcribe 模式）")
+                logger.info("🎤 开始录音（转录模式）")
         else:
             # 停止录音
             self.is_recording = False
             self.state = InputState.PROCESSING
-            logger.info("⏹️ 停止录音（OpenAI GPT-4o transcribe 模式）")
+            logger.info("⏹️ 停止录音（转录模式）")
     
     def toggle_kimi_recording(self):
         """切换本地 Whisper 录音状态"""
@@ -343,40 +416,28 @@ class KeyboardManager:
         """按键按下时的回调"""
         try:
             # 检查转录按钮（字符键或特殊键）
-            is_transcription_key = False
-            if isinstance(self.transcriptions_button, str):
-                # 字符键
-                is_transcription_key = hasattr(key, 'char') and key.char == self.transcriptions_button
-            else:
-                # 特殊键
-                is_transcription_key = key == self.transcriptions_button
+            is_transcription_key = self._key_matches(key, self.transcriptions_button)
                 
-            # 检查翻译按钮（字符键或特殊键）
-            is_translation_key = False
-            if isinstance(self.translations_button, str):
-                # 字符键
-                is_translation_key = hasattr(key, 'char') and key.char == self.translations_button
-            else:
-                # 特殊键
-                is_translation_key = key == self.translations_button
+            # 检查快捷键修饰键（如 Win/Ctrl/Cmd）
+            is_translation_key = self._key_matches(key, self.translations_button)
             
             # 检查I键（用于本地 Whisper 模式）
             if hasattr(key, 'char') and key.char == 'i':
                 self.i_pressed = True
-                # 检查是否同时按下了ctrl+i（本地 Whisper 模式）
+                # 检查是否同时按下了修饰键+i（本地 Whisper 模式）
                 if self.ctrl_pressed and self.i_pressed:
                     self.toggle_kimi_recording()
             elif is_transcription_key:  # F键
                 self.f_pressed = True
-                # 检查是否同时按下了ctrl+f
+                # 检查是否同时按下了修饰键+f
                 if self.ctrl_pressed and self.f_pressed:
                     self.toggle_recording()
-            elif is_translation_key:  # Ctrl键
+            elif is_translation_key:  # 快捷键修饰键
                 self.ctrl_pressed = True
-                # 检查是否同时按下了ctrl+f（OpenAI GPT-4o transcribe 模式）
+                # 检查是否同时按下了修饰键+f（默认转录模式）
                 if self.ctrl_pressed and self.f_pressed:
                     self.toggle_recording()
-                # 检查是否同时按下了ctrl+i（本地 Whisper 模式）
+                # 检查是否同时按下了修饰键+i（本地 Whisper 模式）
                 elif self.ctrl_pressed and self.i_pressed:
                     self.toggle_kimi_recording()
         except AttributeError:
@@ -386,29 +447,17 @@ class KeyboardManager:
         """按键释放时的回调"""
         try:
             # 检查转录按钮（字符键或特殊键）
-            is_transcription_key = False
-            if isinstance(self.transcriptions_button, str):
-                # 字符键
-                is_transcription_key = hasattr(key, 'char') and key.char == self.transcriptions_button
-            else:
-                # 特殊键
-                is_transcription_key = key == self.transcriptions_button
+            is_transcription_key = self._key_matches(key, self.transcriptions_button)
                 
-            # 检查翻译按钮（字符键或特殊键）
-            is_translation_key = False
-            if isinstance(self.translations_button, str):
-                # 字符键
-                is_translation_key = hasattr(key, 'char') and key.char == self.translations_button
-            else:
-                # 特殊键
-                is_translation_key = key == self.translations_button
+            # 检查快捷键修饰键（如 Win/Ctrl/Cmd）
+            is_translation_key = self._key_matches(key, self.translations_button)
                 
             # 检查I键释放
             if hasattr(key, 'char') and key.char == 'i':
                 self.i_pressed = False
             elif is_transcription_key:  # F键释放
                 self.f_pressed = False
-            elif is_translation_key:  # Ctrl键释放
+            elif is_translation_key:  # 快捷键修饰键释放
                 self.ctrl_pressed = False
 
         except AttributeError:
@@ -423,9 +472,6 @@ class KeyboardManager:
         """重置所有状态和临时文本"""
         # 清除临时文本
         self._delete_previous_text()
-        
-        # 恢复剪贴板
-        self._restore_clipboard()
         
         # 重置状态标志
         self.ctrl_pressed = False

@@ -44,12 +44,12 @@ This project is based on [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/
 ### Doubao Streaming ASR (since v3.2.0)
 - **Real-time Streaming Transcription**: Powered by ByteDance's Doubao Seed ASR 2.0, transcription appears as you speak
 - **Floating Preview Window**: Shows pending text in real-time near your input field, like an IME
-- **Now Default for Ctrl+F**: The best voice input experience, set as default (configurable)
+- **Now Default for Win+F**: The best voice input experience, set as default (configurable)
 - 👉 [How to get your API keys](#how-to-get-doubao-api-keys)
 
 ### 🎯 Core Functions
 - **Multi-platform Transcription Services**: Doubao Streaming ASR (default), OpenAI GPT-4o transcribe, local whisper.cpp
-- **Smart Hotkeys**: Ctrl+F (Doubao streaming, default) / Ctrl+I (local cost-saving mode)
+- **Smart Hotkeys**: Win+F (Doubao streaming, default) / Win+I (local cost-saving mode)
 - **Audio Archive**: Automatically save all recordings, support history playback
 - **Failure Retry**: Intelligent error handling and retry mechanism
 
@@ -72,6 +72,7 @@ This project is based on [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/
 - macOS/Linux (Windows support in development)
 - Network connection (only required for cloud services)
 - **Local whisper.cpp** (required when using local transcription features)
+- Linux: PortAudio runtime (`sudo apt install libportaudio2` on Ubuntu/Debian)
 
 ### Installation Steps
 
@@ -83,7 +84,7 @@ cd Whisper-Input-Next
 
 2. **Create Virtual Environment**
 ```bash
-python -m .venv .venv
+python -m venv .venv
 source .venv/bin/activate  # macOS/Linux
 # or .venv\\Scripts\\activate  # Windows
 ```
@@ -91,6 +92,13 @@ source .venv/bin/activate  # macOS/Linux
 3. **Install Dependencies**
 ```bash
 pip install -r requirements.txt
+```
+
+**Using uv (optional):**
+```bash
+uv venv --python 3.12
+source .venv/bin/activate
+uv pip install -r requirements.txt
 ```
 
 4. **Install Local whisper.cpp (Optional, required for local transcription)**
@@ -112,11 +120,12 @@ cd ..
 
 5. **Configure Environment Variables**
 ```bash
-cp env.example .env
+cp .env.example .env
 # Edit .env file, configure necessary parameters:
-# - OFFICIAL_OPENAI_API_KEY: OpenAI API key (required)
-# - WHISPER_CLI_PATH: whisper.cpp executable path (required for local transcription)
-# - WHISPER_MODEL_PATH: whisper model file path (required for local transcription)
+# - DOUBAO_APP_KEY / DOUBAO_ACCESS_KEY: required for Doubao streaming
+# - SYSTEM_PLATFORM: mac / linux / win
+# - OFFICIAL_OPENAI_API_KEY: optional, for OpenAI batch transcription/translation
+# - WHISPER_CLI_PATH / WHISPER_MODEL_PATH: optional, for local transcription
 ```
 
 6. **Run Program**
@@ -157,14 +166,14 @@ TRANSCRIPTION_SERVICE=doubao
 # ============ OpenAI Configuration (Optional, for batch mode) ============
 OFFICIAL_OPENAI_API_KEY=sk-proj-xxx
 
-# ============ Local whisper.cpp (Optional, for Ctrl+I) ============
+# ============ Local whisper.cpp (Optional, for Win+I) ============
 WHISPER_CLI_PATH=/path/to/whisper.cpp/build/bin/whisper-cli
 WHISPER_MODEL_PATH=models/ggml-large-v3.bin
 
 # ============ Keyboard & System Configuration ============
 TRANSCRIPTIONS_BUTTON=f
-TRANSLATIONS_BUTTON=ctrl
-SYSTEM_PLATFORM=mac  # mac/win
+TRANSLATIONS_BUTTON=win
+SYSTEM_PLATFORM=linux  # mac/linux/win
 
 # Feature switches
 CONVERT_TO_SIMPLIFIED=false
@@ -192,7 +201,7 @@ Add these aliases to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
 
 ```bash
 alias whisper_input='cd /path/to/Whisper-Input-Next && ./start.sh'
-alias whisper_input_off='tmux kill-session -t whisper-input'
+alias whisper_input_off='tmux send-keys -t whisper-input C-c 2>/dev/null; tmux kill-session -t whisper-input 2>/dev/null'
 ```
 
 Replace `/path/to/Whisper-Input-Next` with your actual project path.
@@ -201,10 +210,10 @@ Replace `/path/to/Whisper-Input-Next` with your actual project path.
 
 | Hotkey | Function | Service | Features |
 |--------|----------|---------|-----------|
-| `Ctrl+F` | **Real-time streaming transcription** | Doubao Seed ASR 2.0 (default) | Ultra-low latency, floating preview, text appears as you speak |
-| `Ctrl+I` | Local transcription | whisper.cpp | Offline processing, privacy protection |
+| `Win+F` | **Real-time streaming transcription** | Doubao Seed ASR 2.0 (default) | Ultra-low latency, floating preview, text appears as you speak |
+| `Win+I` | Local transcription | whisper.cpp | Offline processing, privacy protection |
 
-> **Note**: Set `TRANSCRIPTION_SERVICE=openai` in `.env` to use OpenAI GPT-4o transcribe instead of Doubao for Ctrl+F.
+> **Note**: Set `TRANSCRIPTION_SERVICE=openai` in `.env` to use OpenAI GPT-4o transcribe instead of Doubao for Win+F.
 
 ### Status Indicators
 
@@ -214,7 +223,7 @@ The program displays concise status indicators at the cursor position during run
 |--------|---------|--------|
 | `0` | Recording | Press hotkey again to stop recording |
 | `1` | Transcribing | Please wait for transcription to complete |
-| `!` | Transcription failed/error | Press `Ctrl+F` again to retry (audio saved) |
+| `!` | Transcription failed/error | Press `Win+F` again to retry (audio saved) |
 
 **Design Optimizations**:
 - Use concise numeric status, avoid complex emoji symbols
@@ -223,7 +232,7 @@ The program displays concise status indicators at the cursor position during run
 
 **Retry Mechanism Instructions**:
 - When transcription fails, the system saves the recording and displays `!` status
-- No need to re-record, simply press `Ctrl+F` to retry
+- No need to re-record, simply press `Win+F` to retry
 - Retry uses previously saved audio until transcription succeeds
 
 ## 📚 Feature Documentation
@@ -284,11 +293,11 @@ git clone https://github.com/Mor-Li/Whisper-Input-Next.git
 cd Whisper-Input-Next
 
 # Create development environment
-python -m venv .venv
+uv venv --python 3.12
 source .venv/bin/activate
 
 # Install dependencies
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 
 # Start development
 python main.py

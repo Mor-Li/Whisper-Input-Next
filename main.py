@@ -17,7 +17,6 @@ from src.keyboard.listener import KeyboardManager, check_accessibility_permissio
 from src.keyboard.inputState import InputState
 from src.transcription.whisper import WhisperProcessor
 from src.utils.logger import logger
-from src.transcription.senseVoiceSmall import SenseVoiceSmallProcessor
 from src.transcription.local_whisper import LocalWhisperProcessor
 from src.transcription.doubao_streaming import DoubaoStreamingProcessor
 from src.ui.status_bar import StatusBarController
@@ -75,22 +74,26 @@ class VoiceAssistant:
         self._streaming_thread: Optional[threading.Thread] = None
         self._current_streaming_archive_path: Optional[str] = None
 
-        # 根据配置选择 Ctrl+F 的处理方式
+        # 根据配置选择默认转录快捷键的处理方式
         if self.transcription_service == "doubao" and self.doubao_processor and self.doubao_processor.is_available():
-            ctrl_f_start = self.start_doubao_streaming
-            ctrl_f_stop = self.stop_doubao_streaming
-            logger.info("Ctrl+F 使用豆包流式识别")
+            default_transcription_start = self.start_doubao_streaming
+            default_transcription_stop = self.stop_doubao_streaming
+            logger.info("默认转录快捷键使用豆包流式识别")
+        elif self.openai_processor is not None:
+            default_transcription_start = self.start_openai_recording
+            default_transcription_stop = self.stop_openai_recording
+            logger.info("默认转录快捷键使用 OpenAI 批量转录")
         else:
-            ctrl_f_start = self.start_openai_recording
-            ctrl_f_stop = self.stop_openai_recording
-            logger.info("Ctrl+F 使用 OpenAI 批量转录")
+            default_transcription_start = self._show_transcription_unavailable
+            default_transcription_stop = self._show_transcription_unavailable
+            logger.warning("默认转录快捷键不可用：豆包和 OpenAI 均未配置")
 
         self.keyboard_manager = KeyboardManager(
-            on_record_start=ctrl_f_start,    # Ctrl+F: 根据配置选择
-            on_record_stop=ctrl_f_stop,
+            on_record_start=default_transcription_start,
+            on_record_stop=default_transcription_stop,
             on_translate_start=self.start_translation_recording,  # 保留翻译功能
             on_translate_stop=self.stop_translation_recording,
-            on_kimi_start=self.start_local_recording,       # Ctrl+I: Local Whisper
+            on_kimi_start=self.start_local_recording,       # 修饰键+I: Local Whisper
             on_kimi_stop=self.stop_local_recording,
             on_reset_state=self.reset_state,
             on_state_change=self._on_state_change,
@@ -169,6 +172,11 @@ class VoiceAssistant:
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"更新状态栏失败: {exc}")
 
+    def _show_transcription_unavailable(self):
+        logger.error("转录服务不可用：请配置豆包或 OpenAI")
+        self.status_controller.show_error("转录服务不可用")
+        self.keyboard_manager.reset_state()
+
     def _buffer_to_bytes(self, audio_buffer: Optional[io.BytesIO]) -> Optional[bytes]:
         if audio_buffer is None:
             return None
@@ -226,6 +234,8 @@ class VoiceAssistant:
         buffer = io.BytesIO(job.audio_bytes)
         try:
             if job.processor == "openai":
+                if self.openai_processor is None:
+                    raise RuntimeError("OpenAI 转录服务未配置")
                 processor_result = self.openai_processor.process_audio(
                     buffer,
                     mode=job.mode,
@@ -233,6 +243,8 @@ class VoiceAssistant:
                     archive_path=job.archive_path,
                 )
             elif job.processor == "local":
+                if self.local_processor is None:
+                    raise RuntimeError("本地 Whisper 不可用")
                 processor_result = self.local_processor.process_audio(
                     buffer,
                     mode=job.mode,
@@ -344,11 +356,16 @@ class VoiceAssistant:
         return job.processor, "unknown"
 
     def start_openai_recording(self):
-        """开始录音（OpenAI GPT-4o transcribe模式 - Ctrl+F）"""
+        """开始录音（OpenAI GPT-4o transcribe 模式）"""
+        if self.openai_processor is None:
+            logger.warning("OpenAI 转录不可用，请配置 OFFICIAL_OPENAI_API_KEY 或使用豆包")
+            self.status_controller.show_error("OpenAI 转录不可用")
+            self.keyboard_manager.reset_state()
+            return
         self.audio_recorder.start_recording()
 
     def stop_openai_recording(self):
-        """停止录音并处理（OpenAI GPT-4o transcribe模式 - Ctrl+F）"""
+        """停止录音并处理（OpenAI GPT-4o transcribe 模式）"""
         audio = self.audio_recorder.stop_recording()
         if audio == "TOO_SHORT":
             logger.warning("录音时长太短，状态将重置")
@@ -370,15 +387,15 @@ class VoiceAssistant:
         )
 
     def start_local_recording(self):
-        """开始录音（本地 Whisper 模式 - Ctrl+I）"""
+        """开始录音（本地 Whisper 模式）"""
         if self.local_processor is None:
-            logger.warning("本地 Whisper 不可用，请使用 Ctrl+F (OpenAI) 模式")
+            logger.warning("本地 Whisper 不可用，请使用默认转录快捷键")
             self.status_controller.show_error("Local Whisper 不可用")
             return
         self.audio_recorder.start_recording()
 
     def stop_local_recording(self):
-        """停止录音并处理（本地 Whisper 模式 - Ctrl+I）"""
+        """停止录音并处理（本地 Whisper 模式）"""
         if self.local_processor is None:
             return
         audio = self.audio_recorder.stop_recording()
@@ -398,6 +415,11 @@ class VoiceAssistant:
 
     def start_translation_recording(self):
         """开始录音（翻译模式）"""
+        if self.openai_processor is None:
+            logger.warning("翻译模式需要 OpenAI，请配置 OFFICIAL_OPENAI_API_KEY")
+            self.status_controller.show_error("翻译模式需要 OpenAI")
+            self.keyboard_manager.reset_state()
+            return
         self.audio_recorder.start_recording()
 
     def stop_translation_recording(self):
@@ -544,29 +566,17 @@ class VoiceAssistant:
         self.status_controller.start()
 
 def main():
-    # 判断是 OpenAI GPT-4o transcribe 还是 GROQ Whisper 还是 SiliconFlow 还是本地whisper.cpp
-    service_platform = os.getenv("SERVICE_PLATFORM", "siliconflow")
-    
-    # 支持 openai&local 双平台配置（我们的默认维护配置）
-    if service_platform == "openai&local" or service_platform == "openai":
-        # 双处理器架构：本身就有OpenAI + 本地whisper两个处理器
-        pass  # 直接使用下面的双处理器创建逻辑
-    elif service_platform == "groq":
-        audio_processor = WhisperProcessor()  # 使用 GROQ Whisper
-    elif service_platform == "siliconflow":
-        audio_processor = SenseVoiceSmallProcessor()
-    elif service_platform == "local":
-        audio_processor = LocalWhisperProcessor()
-    else:
-        raise ValueError(f"无效的服务平台: {service_platform}, 支持的平台: openai&local (推荐), openai, groq, siliconflow, local")
-    
     try:
         # 创建三处理器架构：OpenAI + 本地 Whisper + 豆包流式
         original_platform = os.environ.get("SERVICE_PLATFORM")
 
         # 创建 OpenAI 处理器
         os.environ["SERVICE_PLATFORM"] = "openai"
-        openai_processor = WhisperProcessor()
+        try:
+            openai_processor = WhisperProcessor()
+        except (AssertionError, ValueError) as e:
+            logger.warning(f"OpenAI 转录不可用，将禁用批量/翻译模式: {e}")
+            openai_processor = None
 
         # 创建本地 Whisper 处理器（可选，如果不可用则跳过）
         os.environ["SERVICE_PLATFORM"] = "local"

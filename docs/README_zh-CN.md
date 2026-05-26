@@ -29,7 +29,7 @@
 
 ### 🎯 核心功能
 - **多平台转录服务**: 支持OpenAI GPT-4o transcribe、GROQ、SiliconFlow、本地whisper.cpp
-- **智能快捷键**: Ctrl+F (OpenAI高质量) / Ctrl+I (本地省钱模式)
+- **智能快捷键**: Win+F (OpenAI高质量) / Win+I (本地省钱模式)
 - **音频存档**: 自动保存所有录音，支持历史回放
 - **失败重试**: 智能错误处理和重试机制
 - **实时状态**: 直观的录音和处理状态显示
@@ -87,7 +87,7 @@ cd ..
 
 5. **配置环境变量**
 ```bash
-cp env.example .env
+cp .env.example .env
 # 编辑 .env 文件，配置必要参数:
 # - OFFICIAL_OPENAI_API_KEY: OpenAI API密钥 (必需)
 # - WHISPER_CLI_PATH: whisper.cpp可执行文件路径 (使用本地转录时必需)
@@ -133,8 +133,8 @@ WHISPER_MODEL_PATH=models/ggml-large-v3.bin
 
 # 键盘快捷键配置
 TRANSCRIPTIONS_BUTTON=f
-TRANSLATIONS_BUTTON=ctrl
-SYSTEM_PLATFORM=mac  # mac/win
+TRANSLATIONS_BUTTON=win
+SYSTEM_PLATFORM=linux  # mac/linux/win
 
 # 功能开关
 CONVERT_TO_SIMPLIFIED=false
@@ -153,7 +153,7 @@ OPTIMIZE_RESULT=false
 
 ```bash
 alias whisper_input='cd /path/to/Whisper-Input-Next && ./start.sh'
-alias whisper_input_off='tmux kill-session -t whisper-input'
+alias whisper_input_off='tmux send-keys -t whisper-input C-c 2>/dev/null; tmux kill-session -t whisper-input 2>/dev/null'
 ```
 
 请将 `/path/to/Whisper-Input-Next` 替换为你的项目实际路径。
@@ -162,8 +162,8 @@ alias whisper_input_off='tmux kill-session -t whisper-input'
 
 | 快捷键 | 功能 | 服务 | 特点 |
 |--------|------|------|------|
-| `Ctrl+F` | 高质量转录 | OpenAI GPT-4o transcribe | 自带标点，质量最高 |
-| `Ctrl+I` | 本地转录 | whisper.cpp | 离线处理，隐私保护 |
+| `Win+F` | 高质量转录 | OpenAI GPT-4o transcribe | 自带标点，质量最高 |
+| `Win+I` | 本地转录 | whisper.cpp | 离线处理，隐私保护 |
 
 ### 状态指示器
 
@@ -173,7 +173,7 @@ alias whisper_input_off='tmux kill-session -t whisper-input'
 |------|------|------|
 | `0` | 正在录音 | 再次按快捷键停止录音 |
 | `1` | 正在转录 | 请等待转录完成 |
-| `!` | 转录失败/出错 | 再次按`Ctrl+F`重试（音频已保存） |
+| `!` | 转录失败/出错 | 再次按`Win+F`重试（音频已保存） |
 
 **设计优化**：
 - 使用简洁数字状态，避免复杂emoji符号
@@ -182,7 +182,7 @@ alias whisper_input_off='tmux kill-session -t whisper-input'
 
 **重试机制说明**：
 - 当转录失败时，系统会保存录音并显示`!`状态
-- 此时无需重新录音，直接按`Ctrl+F`即可重试
+- 此时无需重新录音，直接按`Win+F`即可重试
 - 重试会使用之前保存的音频，直到转录成功
 
 ## 📚 功能文档

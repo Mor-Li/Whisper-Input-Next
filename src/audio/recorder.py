@@ -10,8 +10,7 @@ import time
 import threading
 from typing import AsyncGenerator, Optional
 
-# 允许的设备关键字（按优先级从高到低）
-# 只允许这些设备，其他设备不使用
+# 优先设备关键字（按优先级从高到低）；没有命中时回退到系统默认输入设备。
 ALLOWED_DEVICE_KEYWORDS = [
     "dji mic",                # DJI Mic 系列无线麦克风（最高优先级）
     "wireless mic",           # DJI Wireless Mic 等无线麦克风
@@ -214,10 +213,10 @@ class AudioRecorder:
             return False
 
     def _get_best_input_device(self):
-        """根据优先级选择最佳输入设备（只从白名单中选择）
+        """根据优先级选择最佳输入设备。
 
         Returns:
-            tuple: (device_index, device_info) 或 (None, None) 如果没有可用设备
+            tuple: (device_index, device_info)；device_index 为 None 时使用系统默认输入设备。
         """
         try:
             # 刷新设备列表（检测新插入的设备）
@@ -234,8 +233,12 @@ class AudioRecorder:
                         logger.debug(f"找到匹配设备: {device['name']} (优先级关键字: {keyword})")
                         return idx, device
 
-            # 没有找到白名单设备
-            logger.warning("没有找到白名单中的可用设备")
+            default_input = sd.query_devices(kind='input')
+            if default_input and default_input.get('max_input_channels', 0) > 0:
+                logger.warning("没有找到优先设备，使用系统默认输入设备")
+                return None, default_input
+
+            logger.warning("没有可用的音频输入设备")
             return None, None
         except Exception as e:
             logger.error(f"选择最佳设备时出错: {e}")
