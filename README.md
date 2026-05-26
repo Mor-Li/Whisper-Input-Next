@@ -21,7 +21,7 @@
 
 An intelligent voice transcription input tool supporting multiple transcription services and high-quality speech recognition features.
 
-> 🐧 **Linux users:** Linux desktop support lives on the [`linux` branch](https://github.com/Mor-Li/Whisper-Input-Next/tree/linux), community-maintained (I'm on macOS and don't test/maintain it). It may lag behind `main` — track or contribute there.
+> 🐧 **Linux users:** Linux desktop support lives on the [`linux` branch](https://github.com/Mor-Li/Whisper-Input-Next/tree/linux), kindly contributed and maintained by [@MiaoDX](https://github.com/MiaoDX) — many thanks! I'm on macOS and don't personally test/maintain the branch, so it may lag behind `main`. Track or contribute there.
 
 ## 💰 Why Pay $12/Month? Use Open Source Instead!
 

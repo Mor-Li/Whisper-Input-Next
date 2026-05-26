@@ -21,7 +21,7 @@
 
 一个基于语音转录的智能输入工具，支持多种转录服务和高质量的语音识别功能。
 
-> 🐧 **Linux 用户**：Linux 桌面端支持在 [`linux` 分支](https://github.com/Mor-Li/Whisper-Input-Next/tree/linux) 上由社区维护（我自己用 macOS，不测试也不维护该分支），可能会落后于 `main`，请到该分支跟踪或贡献。
+> 🐧 **Linux 用户**：Linux 桌面端支持在 [`linux` 分支](https://github.com/Mor-Li/Whisper-Input-Next/tree/linux) 上,由 [@MiaoDX](https://github.com/MiaoDX) 贡献并维护,感谢！我自己用 macOS,不亲自测试/维护该分支,所以它可能会落后于 `main`,请到该分支跟踪或贡献。
 
 ## 🚀 项目背景
 
