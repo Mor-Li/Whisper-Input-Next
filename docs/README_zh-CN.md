@@ -21,6 +21,8 @@
 
 一个基于语音转录的智能输入工具，支持多种转录服务和高质量的语音识别功能。
 
+> 🐧 **Linux 用户**：Linux 桌面端支持在 [`linux` 分支](https://github.com/Mor-Li/Whisper-Input-Next/tree/linux) 上由社区维护（我自己用 macOS，不测试也不维护该分支），可能会落后于 `main`，请到该分支跟踪或贡献。
+
 ## 🚀 项目背景
 
 本项目基于 [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/Whisper-Input) 进行二次开发。原项目已停止维护数月，我们在其基础上进行了大量功能扩展和架构优化，添加了OpenAI GPT-4o transcribe集成、音频存档、本地whisper支持等重要功能。[为什么要用这个项目？](./docs/[V3.0.0]_知乎blog.md)

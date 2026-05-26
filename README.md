@@ -21,6 +21,8 @@
 
 An intelligent voice transcription input tool supporting multiple transcription services and high-quality speech recognition features.
 
+> 🐧 **Linux users:** Linux desktop support lives on the [`linux` branch](https://github.com/Mor-Li/Whisper-Input-Next/tree/linux), community-maintained (I'm on macOS and don't test/maintain it). It may lag behind `main` — track or contribute there.
+
 ## 💰 Why Pay $12/Month? Use Open Source Instead!
 
 **Typeless charges $12/month** for their voice keyboard, but you know what? This open-source project does the same thing for **FREE** - you only pay for the underlying API costs (Doubao ASR or OpenAI GPT-4o transcribe), which is incredibly cheap compared to Typeless's subscription.
