@@ -35,7 +35,7 @@ class AudioArchiveManager:
 
     def _migrate_legacy_archive_entries(self) -> None:
         for entry in os.listdir(self.archive_dir):
-            if entry in {"cache.json", "audio"}:
+            if entry in {"cache.json", "audio", "transcribe"}:
                 continue
 
             source_path = os.path.join(self.archive_dir, entry)
