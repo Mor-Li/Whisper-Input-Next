@@ -233,7 +233,7 @@ pip install -r requirements.txt
 pip install -e .
 
 # 运行测试
-python -m pytest tests/
+python -m pytest test/
 ```
 
 ### 提交规范
