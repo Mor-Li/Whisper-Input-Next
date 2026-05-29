@@ -5,13 +5,19 @@ from __future__ import annotations
 from typing import Optional, Tuple
 import traceback
 
+from src.utils.logger import logger
+
 from AppKit import (
-    NSFloatingWindowLevel,
+    NSEvent,
     NSFont,
     NSMakeRect,
     NSMakeSize,
     NSPanel,
+    NSScreenSaverWindowLevel,
     NSTextField,
+    NSWindowCollectionBehaviorCanJoinAllSpaces,
+    NSWindowCollectionBehaviorFullScreenAuxiliary,
+    NSWindowCollectionBehaviorStationary,
     NSWindowStyleMaskBorderless,
     NSWindowStyleMaskNonactivatingPanel,
     NSWorkspace,
@@ -52,7 +58,7 @@ def _get_caret_position() -> Tuple[float, float, float, float]:
 
     pid = front_app.processIdentifier()
     app_name = front_app.localizedName()
-    print(f"[FloatingPreview] 当前应用: {app_name} (pid={pid})")
+    logger.info(f"[FloatingPreview] 当前应用: {app_name} (pid={pid})")
 
     # 创建 AXUIElement
     app_element = AXUIElementCreateApplication(pid)
@@ -68,7 +74,7 @@ def _get_caret_position() -> Tuple[float, float, float, float]:
     if focused_element is None:
         raise RuntimeError("焦点元素为 None")
 
-    print(f"[FloatingPreview] 焦点元素: {focused_element}")
+    logger.info(f"[FloatingPreview] 焦点元素: {focused_element}")
 
     # 获取位置
     err, position_value = AXUIElementCopyAttributeValue(
@@ -98,7 +104,7 @@ def _get_caret_position() -> Tuple[float, float, float, float]:
     if not success:
         raise RuntimeError("无法解析尺寸值")
 
-    print(f"[FloatingPreview] AX坐标: x={point.x}, y={point.y}, w={size.width}, h={size.height}")
+    logger.info(f"[FloatingPreview] AX坐标: x={point.x}, y={point.y}, w={size.width}, h={size.height}")
 
     # 将屏幕坐标从左上角原点转换为左下角原点（macOS 窗口坐标系）
     screen = NSScreen.mainScreen()
@@ -107,7 +113,7 @@ def _get_caret_position() -> Tuple[float, float, float, float]:
     # AX 坐标是从屏幕左上角算起的，需要转换
     y_from_bottom = screen_height - point.y - size.height
 
-    print(f"[FloatingPreview] 转换后: x={point.x}, y={y_from_bottom}")
+    logger.info(f"[FloatingPreview] 转换后: x={point.x}, y={y_from_bottom}")
 
     return (point.x, y_from_bottom, size.width, size.height)
 
@@ -138,8 +144,20 @@ class FloatingPreviewWindow:
             # 尝试定位到光标位置
             self._position_near_caret()
 
-            self._panel.orderFront_(None)
+            # 用 orderFrontRegardless 而非 orderFront_，
+            # 即便本 app 是后台 (ActivationPolicyProhibited) 也强制上浮。
+            self._panel.orderFrontRegardless()
             self._is_visible = True
+            # 诊断：panel 实际状态
+            frame = self._panel.frame()
+            logger.info(
+                f"[FloatingPreview] shown: "
+                f"frame=({frame.origin.x:.0f},{frame.origin.y:.0f},"
+                f"{frame.size.width:.0f}x{frame.size.height:.0f}) "
+                f"level={self._panel.level()} "
+                f"isVisible={self._panel.isVisible()} "
+                f"isOnActiveSpace={self._panel.isOnActiveSpace()}"
+            )
 
         AppHelper.callAfter(_show)
 
@@ -148,6 +166,7 @@ class FloatingPreviewWindow:
         def _hide() -> None:
             if self._panel is not None:
                 self._panel.orderOut_(None)
+                logger.info(f"[FloatingPreview] hidden, isVisible={self._panel.isVisible()}")
             self._is_visible = False
 
         AppHelper.callAfter(_hide)
@@ -184,6 +203,19 @@ class FloatingPreviewWindow:
         try:
             caret_x, caret_y, caret_width, caret_height = _get_caret_position()
 
+            # AX 健全性检查：terminal 类应用（iTerm2 / Terminal.app）会把整个
+            # scrollback buffer 当成焦点元素返回，导致 caret_height 可达上万
+            # 像素，把 panel 推到屏幕外。检测到这种情况就走兜底。
+            if (
+                caret_height > screen_frame.size.height
+                or caret_y < 0
+                or caret_y > screen_frame.size.height
+            ):
+                raise RuntimeError(
+                    f"AX 返回的尺寸不合理 (y={caret_y:.0f}, h={caret_height:.0f}, "
+                    f"screen_h={screen_frame.size.height:.0f}) — 走兜底"
+                )
+
             # 将窗口放在输入框下方，左对齐
             new_x = caret_x
             new_y = caret_y - panel_height - 5  # 输入框下方 5px
@@ -201,15 +233,26 @@ class FloatingPreviewWindow:
                 new_x = 10
 
         except Exception as e:
-            print(f"[FloatingPreview] ❌ 获取光标位置失败: {e}")
-            traceback.print_exc()
-            # 失败时放在屏幕上方居中
-            new_x = (screen_frame.size.width - panel_width) / 2
-            new_y = screen_frame.size.height - 150
+            logger.warning(f"[FloatingPreview] AX 定位失败，使用兜底位置: {e}")
+            logger.debug(traceback.format_exc())
+            # 兜底：放在鼠标指针下方一点 —— 比固定屏幕上方居中更直观，
+            # 而且对 terminal / scrollback buffer 异常的场景也合理。
+            mouse_loc = NSEvent.mouseLocation()  # 屏幕坐标系，左下原点
+            new_x = mouse_loc.x - panel_width / 2
+            new_y = mouse_loc.y - panel_height - 20
+
+            # 边界 clamp 到屏幕内
+            new_x = max(10, min(new_x, screen_frame.size.width - panel_width - 10))
+            new_y = max(10, min(new_y, screen_frame.size.height - panel_height - 10))
 
         self._panel.setFrame_display_(
             NSMakeRect(new_x, new_y, panel_width, panel_height),
             True,
+        )
+        logger.info(
+            f"[FloatingPreview] positioned at "
+            f"({new_x:.0f},{new_y:.0f}) {panel_width:.0f}x{panel_height:.0f} "
+            f"on screen {screen_frame.size.width:.0f}x{screen_frame.size.height:.0f}"
         )
 
     def _create_panel(self) -> None:
@@ -236,7 +279,21 @@ class FloatingPreviewWindow:
         )
 
         # 设置面板属性
-        self._panel.setLevel_(NSFloatingWindowLevel)  # 浮动在所有窗口之上
+        # 用 NSScreenSaverWindowLevel (1000) —— 常规 API 能给到的最高层级，
+        # 压过普通 floating(3) / status(25) / popup menu(101)，
+        # 几乎不会被第三方置顶 app（Raycast / Alfred / Bartender 等）盖住。
+        self._panel.setLevel_(NSScreenSaverWindowLevel)
+        # 跨所有 Space + 全屏 Space 也可见 + 不随 Mission Control 移动
+        self._panel.setCollectionBehavior_(
+            NSWindowCollectionBehaviorCanJoinAllSpaces
+            | NSWindowCollectionBehaviorFullScreenAuxiliary
+            | NSWindowCollectionBehaviorStationary
+        )
+        # NSPanel 默认 hidesOnDeactivate=True，本 app 是 prohibited policy，
+        # 一旦其他 app 抢焦点 panel 可能被 orderOut，关掉这个行为。
+        self._panel.setHidesOnDeactivate_(False)
+        # 防止系统在 Cmd+H / Hide Others 时把窗口一起隐藏掉。
+        self._panel.setCanHide_(False)
         self._panel.setOpaque_(False)
         self._panel.setBackgroundColor_(NSColor.colorWithCalibratedRed_green_blue_alpha_(0.1, 0.1, 0.1, 0.85))
         self._panel.setHasShadow_(True)
