@@ -13,11 +13,10 @@ from AppKit import (
     NSMakeRect,
     NSMakeSize,
     NSPanel,
-    NSScreenSaverWindowLevel,
+    NSPopUpMenuWindowLevel,
     NSTextField,
     NSWindowCollectionBehaviorCanJoinAllSpaces,
     NSWindowCollectionBehaviorFullScreenAuxiliary,
-    NSWindowCollectionBehaviorStationary,
     NSWindowStyleMaskBorderless,
     NSWindowStyleMaskNonactivatingPanel,
     NSWorkspace,
@@ -279,15 +278,18 @@ class FloatingPreviewWindow:
         )
 
         # 设置面板属性
-        # 用 NSScreenSaverWindowLevel (1000) —— 常规 API 能给到的最高层级，
-        # 压过普通 floating(3) / status(25) / popup menu(101)，
-        # 几乎不会被第三方置顶 app（Raycast / Alfred / Bartender 等）盖住。
-        self._panel.setLevel_(NSScreenSaverWindowLevel)
-        # 跨所有 Space + 全屏 Space 也可见 + 不随 Mission Control 移动
+        # NSPopUpMenuWindowLevel (101)：高于 floating(3)/status(25)，
+        # 而且仍受 collectionBehavior 控制 —— 这是关键。
+        # 之前用 NSScreenSaverWindowLevel(1000) 时 macOS 把 panel 视为
+        # system-level window，CanJoinAllSpaces / FullScreenAuxiliary 都被忽略,
+        # 导致切 Space / Cursor 全屏后浮窗 "找不到"（log 里 isOnActiveSpace=False）。
+        self._panel.setLevel_(NSPopUpMenuWindowLevel)
+        # 跨所有 Space + 全屏 Space 都出现。
+        # 注意：不能加 Stationary —— 它跟 CanJoinAllSpaces 语义冲突，
+        # 同时设置会让 collectionBehavior 行为变得未定义。
         self._panel.setCollectionBehavior_(
             NSWindowCollectionBehaviorCanJoinAllSpaces
             | NSWindowCollectionBehaviorFullScreenAuxiliary
-            | NSWindowCollectionBehaviorStationary
         )
         # NSPanel 默认 hidesOnDeactivate=True，本 app 是 prohibited policy，
         # 一旦其他 app 抢焦点 panel 可能被 orderOut，关掉这个行为。
