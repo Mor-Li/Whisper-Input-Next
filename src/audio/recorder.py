@@ -90,23 +90,33 @@ class AudioRecorder:
             logger.info("✅ 已取消自动停止定时器")
         self.auto_stop_timer = None
 
-    def _close_stream_safely(self):
-        """安全关闭当前流对象。"""
-        stream = self.stream
-        self.stream = None
+    def _close_stream_async(self, stream):
+        """Fire-and-forget 关闭一个 PortAudio stream。
 
-        if not stream:
+        必须先把 self.stream 在锁内置 None 后再把 stream 传进来——
+        本方法立刻返回，真正的 stop/abort/close 在 daemon 线程做。
+        即便 PortAudio 在设备半坏状态下 stop() 永远不返回，也只挂这条 daemon，
+        不会回堵调用者（pynput 按键回调、doubao 线程、Timer 线程都不被阻塞）。
+        """
+        if stream is None:
             return
 
-        try:
-            stream.stop()
-        except Exception as exc:
-            logger.warning(f"停止音频流时出错: {exc}")
+        def _close_worker():
+            inner = threading.Thread(target=stream.stop, name="pa-stop-inner", daemon=True)
+            inner.start()
+            inner.join(timeout=1.0)
+            if inner.is_alive():
+                logger.warning("⚠️ stream.stop() 1s 未返回，改用 abort() 强制中止")
+                try:
+                    stream.abort()
+                except Exception as exc:
+                    logger.warning(f"abort 音频流时出错: {exc}")
+            try:
+                stream.close()
+            except Exception as exc:
+                logger.warning(f"关闭音频流时出错: {exc}")
 
-        try:
-            stream.close()
-        except Exception as exc:
-            logger.warning(f"关闭音频流时出错: {exc}")
+        threading.Thread(target=_close_worker, name="pa-close", daemon=True).start()
 
     def _finalize_recording(self, abort=False, *, enforce_min_duration=True, clear_queue=True):
         with self._recording_lock:
@@ -116,7 +126,11 @@ class AudioRecorder:
             logger.info("停止录音...")
             self.recording = False
             self._cancel_auto_stop_timer()
-            self._close_stream_safely()
+            # 锁内只 swap 指针，关流移到锁外做——避免 PortAudio C 调用挂死时持锁
+            stream_to_close = self.stream
+            self.stream = None
+
+        self._close_stream_async(stream_to_close)
 
         if abort:
             logger.warning("⚠️ 录音已被中止，音频数据已丢弃")
@@ -153,10 +167,13 @@ class AudioRecorder:
             self.record_start_time = None
             self._device_error_detected = False
             self._cancel_auto_stop_timer()
-            self._close_stream_safely()
+            stream_to_close = self.stream
+            self.stream = None
 
             if drain_queue:
                 self._drain_audio_queue()
+
+        self._close_stream_async(stream_to_close)
     
     def _list_audio_devices(self):
         """列出所有可用的音频输入设备"""

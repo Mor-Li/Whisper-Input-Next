@@ -492,7 +492,8 @@ class VoiceAssistant:
             """转录完成"""
             logger.info("✅ 豆包流式转录完成")
             self.floating_preview.hide()
-            self.audio_recorder.stop_streaming_recording()
+            # 不在这里 stop_streaming_recording——按键 / auto_stop / disconnect 路径
+            # 已经负责把 recording 翻 False 并把 stream 关掉，重复调会和按键线程争锁
             self.keyboard_manager.reset_state()
 
         def on_error(error: str):
