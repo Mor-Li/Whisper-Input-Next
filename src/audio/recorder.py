@@ -18,6 +18,7 @@ ALLOWED_DEVICE_KEYWORDS = [
     "dji mic",                # DJI Mic 系列无线麦克风（最高优先级）
     "wireless mic",           # DJI Wireless Mic 等无线麦克风
     "external microphone",    # 外接麦克风/耳机
+    "accentum",               # Sennheiser ACCENTUM 蓝牙耳机
     "macbook pro microphone", # 内置麦克风（英文系统）
     "macbook air microphone", # 内置麦克风（MacBook Air 英文系统）
     "airpods",                # AirPods 蓝牙耳机

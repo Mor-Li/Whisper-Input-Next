@@ -277,9 +277,10 @@ class DoubaoStreamingProcessor:
 
         try:
             self._session = aiohttp.ClientSession()
+            connect_id = str(uuid.uuid4())
             headers = {
                 "X-Api-Resource-Id": "volc.seedasr.sauc.duration",  # 2.0版本小时版
-                "X-Api-Connect-Id": str(uuid.uuid4()),
+                "X-Api-Connect-Id": connect_id,
                 "X-Api-Access-Key": self.access_key,
                 "X-Api-App-Key": self.app_key
             }
@@ -292,6 +293,24 @@ class DoubaoStreamingProcessor:
             self._seq = 1
             logger.info("豆包流式 ASR 连接成功")
             return True
+        except aiohttp.WSServerHandshakeError as e:
+            # 服务端在 WS 握手阶段拒绝（403/401/404 等），response headers 里通常带有
+            # X-Tt-Logid / X-Api-Status-Code / X-Api-Message，是排障的关键
+            resp_headers = dict(getattr(e, "headers", {}) or {})
+            logid = resp_headers.get("X-Tt-Logid") or resp_headers.get("x-tt-logid")
+            api_status = resp_headers.get("X-Api-Status-Code") or resp_headers.get("x-api-status-code")
+            api_message = resp_headers.get("X-Api-Message") or resp_headers.get("x-api-message")
+            app_key_hint = f"{self.app_key[:4]}…{self.app_key[-4:]}" if len(self.app_key) >= 8 else "(too-short)"
+            access_key_hint = f"{self.access_key[:4]}…{self.access_key[-4:]}" if len(self.access_key) >= 8 else "(too-short)"
+            logger.error(
+                "连接豆包 ASR 握手失败 status=%s message=%s | "
+                "X-Api-Status-Code=%s X-Api-Message=%s X-Tt-Logid=%s | "
+                "connect_id=%s app_key=%s access_key=%s",
+                e.status, e.message, api_status, api_message, logid,
+                connect_id, app_key_hint, access_key_hint,
+            )
+            await self.disconnect()
+            return False
         except Exception as e:
             logger.error(f"连接豆包 ASR 失败: {e}")
             await self.disconnect()
