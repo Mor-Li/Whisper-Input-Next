@@ -1,7 +1,7 @@
 # Whisper-Input-Next - Enhanced Voice Transcription Tool
 
 <p align="center">
-  <img src="whisper_claudecode.png" alt="项目海报" />
+  <img src="whisper_cover.png" alt="项目海报" />
 </p>
 
 <p align="center">
@@ -19,7 +19,16 @@
   </a>
 </p>
 
-一个基于语音转录的智能输入工具，支持多种转录服务和高质量的语音识别功能。
+一个语音转文字的智能输入工具，能把你说的话直接打到**系统里任何一个输入框**——Cursor、Claude Code、Codex、Gemini、浏览器、Slack、备忘录，哪儿都行，不绑定任何单一 app。
+
+## 🌟 为什么选 Whisper-Input-Next？
+
+- **🖐️ 真正免手，按一次就持续识别** —— 按一下 `Ctrl+F` 它就一直在听。你可以切窗口、翻文档、去别的 app 复制点东西，再切回来——录音全程不中断。不用像 Typeless 那样一直长按某个键，所以你两只手都是自由的，工作流不被打断。
+- **🌍 全系统通用** —— 它直接在你光标处输入文字，任何 app、任何输入框都能用，不只是某一个编辑器。在 Cursor / Claude Code / Codex 写代码、跟 Gemini 聊天、写邮件——同一个快捷键，处处可用。
+- **🕰️ Audio Archive = 给声音的时光机** —— 每一段录音都在本地永久保存。一年后打开它，你能真的听到去年六月自己在做什么项目。这是你自己的"语音史"，私密地存在你自己的硬盘上——回去听过去的自己，有种近乎奇妙的时空穿越感。
+- **💸 没有中间商赚差价** —— 你直接充源头厂商的 API（豆包 / OpenAI），按成本价用。充几块钱能用好几个月。我们一分钱不赚——没有订阅、没有加价、中间没人抽成。
+- **🎯 二次识别（Two-Pass）** —— 说话停顿时，用准确率更高的非流式模型对每句话重新识别一遍，质量明显提升（例如"广告位" → "光标位置"）。
+- **🔌 转录引擎任选** —— 豆包流式 ASR（默认，超便宜）、OpenAI GPT-4o transcribe，或完全离线的本地 whisper.cpp。
 
 > 🐧 **Linux 用户**：Linux 桌面端支持在 [`linux` 分支](https://github.com/Mor-Li/Whisper-Input-Next/tree/linux) 上,由 [@MiaoDX](https://github.com/MiaoDX) 贡献并维护,感谢！我自己用 macOS,不亲自测试/维护该分支,所以它可能会落后于 `main`,请到该分支跟踪或贡献。
 

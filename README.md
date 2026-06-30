@@ -1,7 +1,7 @@
 # Whisper-Input-Next - Enhanced Voice Transcription Tool
 
 <p align="center">
-  <img src="docs/whisper_claudecode.png" alt="Project Poster" />
+  <img src="docs/whisper_cover.png" alt="Project Poster" />
 </p>
 
 <p align="center">
@@ -19,7 +19,16 @@
   </a>
 </p>
 
-An intelligent voice transcription input tool supporting multiple transcription services and high-quality speech recognition features.
+An intelligent voice-to-text tool that turns your speech into text in **any input box, anywhere on your system** — Cursor, Claude Code, Codex, Gemini, your browser, Slack, Notes, you name it. It's not tied to any single app.
+
+## 🌟 Why Whisper-Input-Next?
+
+- **🖐️ True hands-free, press-once toggle** — Tap `Ctrl+F` once and it just keeps listening. Switch windows, scroll through docs, grab something from another app, then come back — the recording never stops. No need to hold a key down the whole time (like Typeless does), so both your hands stay free and your workflow is never interrupted.
+- **🌍 Works everywhere** — It types straight at your cursor in *any* app or input field, not just one editor. Code in Cursor / Claude Code / Codex, chat with Gemini, write an email — same hotkey, every box.
+- **🕰️ Audio Archive = a time machine for your voice** — Every recording is saved locally, forever. Open it a year from now and literally hear what you were building last June. It's your own spoken history, kept private on your own disk — there's something almost magical about traveling back to hear your past self.
+- **💸 No middleman, ever** — You pay the source vendors' APIs directly (Doubao / OpenAI), at cost. Top up a few bucks and it lasts for months. We take **$0** — no subscription, no markup, nobody skimming in the middle.
+- **🎯 Two-pass recognition** — During speech pauses a higher-accuracy non-streaming model re-recognizes each sentence, noticeably improving quality (e.g. "广告位" → "光标位置").
+- **🔌 Your choice of engine** — Doubao Streaming ASR (default, super cheap), OpenAI GPT-4o transcribe, or fully offline local whisper.cpp.
 
 > 🐧 **Linux users:** Linux desktop support lives on the [`linux` branch](https://github.com/Mor-Li/Whisper-Input-Next/tree/linux), kindly contributed and maintained by [@MiaoDX](https://github.com/MiaoDX) — many thanks! I'm on macOS and don't personally test/maintain the branch, so it may lag behind `main`. Track or contribute there.
 
@@ -27,8 +36,8 @@ An intelligent voice transcription input tool supporting multiple transcription 
 
 **Typeless charges $12/month** for their voice keyboard, but you know what? This open-source project does the same thing for **FREE** - you only pay for the underlying API costs (Doubao ASR or OpenAI GPT-4o transcribe), which is incredibly cheap compared to Typeless's subscription.
 
-- Typeless: $144/year subscription + you don't own the service
-- **Whisper-Input-Next**: $0 + only pay for what you use (Doubao streaming ASR is super cheap!)
+- Typeless: $144/year subscription, **press-and-hold to talk** (ties up a hand, awkward to switch windows mid-sentence), and you don't own the service
+- **Whisper-Input-Next**: **$0** + only pay for what you use (Doubao streaming ASR is super cheap!), **press-once hands-free toggle**, works in **every app system-wide**, and all your audio stays **archived on your own machine**
 
 Stop renting your tools. Own them.
 
