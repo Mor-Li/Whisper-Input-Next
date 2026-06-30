@@ -149,6 +149,34 @@ OPTIMIZE_RESULT=false
 - 这是我们推荐和测试最充分的配置
 - 其他单平台配置（groq、siliconflow等）仅作兼容性保留
 
+## 🐛 故障排查（踩坑记录）
+
+### 豆包流式 ASR 连接时报 `403`
+
+如果一按下录音键就立刻看到类似下面的报错：
+
+```
+ERROR - 连接豆包 ASR 失败: 403, message='Invalid response status', url='wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async'
+ERROR - ❌ 豆包流式转录错误: 连接失败
+```
+
+**这几乎一定是你火山引擎账号的应用「没有开通对应能力」，而不是代码 bug、也不是 endpoint 写错了。** 这个 `403` 是在 WebSocket **握手阶段**（网关层，鉴权之前）返回的——这正是"`X-Api-Resource-Id` 对应的能力没给你的应用开通"的典型特征。
+
+本项目使用的 resource id 是 `volc.seedasr.sauc.duration`，对应的是 **豆包流式语音识别模型 2.0 · 小时版**。你必须在控制台把这个能力**显式勾选开通**：
+
+1. 打开火山引擎语音控制台：[https://console.volcengine.com/speech/app](https://console.volcengine.com/speech/app)
+2. 找到你的应用，点击 **编辑应用**。
+3. 在 **接入能力** 里找到 **豆包流式语音识别模型 2.0**，勾选 **豆包流式语音识别模型 2.0 小时版**（下图红框处）。
+4. 保存后重新运行程序即可。
+
+<p align="center">
+  <img src="../assets/images/volcengine_enable_streaming_asr_2.0.png" alt="开通豆包流式语音识别模型 2.0（小时版）" width="800" />
+</p>
+
+> **注意**：不要为了绕过这个错误把 resource id 降级成旧的 `volc.bigasr.sauc.*` 命名空间。`volc.seedasr.sauc.duration`（2.0）这个 endpoint 本来就是对的——正确的修复是去控制台开通 2.0，而不是改代码。降级到 1.0 只会掩盖真正的权限问题，而且用的是准确率更低的旧模型。
+
+> 火山引擎的控制台入口藏得比较深、来回跳转，找不到的话直接用上面的 `speech/app` 链接进去即可。
+
 ### 便捷启动别名设置 (推荐)
 
 在shell配置文件中添加以下别名 (`~/.bashrc`、`~/.zshrc` 等)：

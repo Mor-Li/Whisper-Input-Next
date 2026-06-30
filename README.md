@@ -188,6 +188,32 @@ OPTIMIZE_RESULT=false
 - **Doubao Streaming ASR** is now the default and recommended transcription service
 - Set `TRANSCRIPTION_SERVICE=openai` to use OpenAI batch mode instead
 
+### 🐛 Troubleshooting (Common Pitfalls)
+
+#### Doubao streaming ASR fails with `403` on connect
+
+If recording starts but you immediately see something like:
+
+```
+ERROR - 连接豆包 ASR 失败: 403, message='Invalid response status', url='wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async'
+ERROR - ❌ Doubao streaming error: connection failed
+```
+
+**This is almost always a missing capability on your Volcengine app, NOT a bug in the code or a wrong endpoint.** The `403` is returned during the WebSocket **handshake** (at the gateway, before authentication), which is the tell-tale sign that the `X-Api-Resource-Id` your key requests is not enabled for your app.
+
+This project uses the resource id `volc.seedasr.sauc.duration`, which maps to **豆包流式语音识别模型 2.0 · 小时版 (Doubao Streaming Speech Recognition Model 2.0 · Hourly)**. You must explicitly enable that exact capability:
+
+1. Open the Volcengine console: [https://console.volcengine.com/speech/app](https://console.volcengine.com/speech/app)
+2. Find your app and click **编辑应用 (Edit Application)**.
+3. Under **接入能力 (Access Capabilities)**, locate **豆包流式语音识别模型 2.0** and check **豆包流式语音识别模型 2.0 小时版** (the box highlighted below).
+4. Save, then run the program again.
+
+<p align="center">
+  <img src="assets/images/volcengine_enable_streaming_asr_2.0.png" alt="Enable Doubao Streaming Speech Recognition 2.0 (Hourly)" width="800" />
+</p>
+
+> **Note**: Do NOT "fix" this by downgrading the resource id to the older `volc.bigasr.sauc.*` namespace. The `volc.seedasr.sauc.duration` (2.0) endpoint is correct — the fix is enabling 2.0 on the console, not changing the code. Enabling 1.0 only masks the real permission problem and gives you a lower-accuracy model.
+
 ### Quick Start with Aliases (Recommended)
 
 Add these aliases to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
