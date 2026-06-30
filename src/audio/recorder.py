@@ -12,12 +12,16 @@ from typing import AsyncGenerator, Optional
 
 # 允许的设备关键字（按优先级从高到低）
 # 只允许这些设备，其他设备不使用
+# 注意：macOS 在中文环境下设备名是本地化的（如 "MacBook Pro麦克风"），
+# 所以需要同时匹配中英文关键字。
 ALLOWED_DEVICE_KEYWORDS = [
     "dji mic",                # DJI Mic 系列无线麦克风（最高优先级）
     "wireless mic",           # DJI Wireless Mic 等无线麦克风
     "external microphone",    # 外接麦克风/耳机
-    "macbook pro microphone", # 内置麦克风
+    "macbook pro microphone", # 内置麦克风（英文系统）
+    "macbook air microphone", # 内置麦克风（MacBook Air 英文系统）
     "airpods",                # AirPods 蓝牙耳机
+    "麦克风",                  # 内置/通用麦克风（中文系统，最低优先级兜底）
 ]
 
 
