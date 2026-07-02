@@ -69,6 +69,7 @@ This project is based on [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/
 - **180s Long Audio Support**: Support up to 3 minutes of continuous recording
 - **Smart Status Indicators**: Simple numeric status display (0, 1, !)
 - **Cache System**: Audio archive with transcription result caching
+- **Cursor-safe hotkeys** *(macOS)*: The recording hotkey is intercepted at the Quartz event-tap layer so toggling never nudges your text caret (`Ctrl+F`/`Ctrl+I` no longer trigger the built-in forward-char/Tab), enabling precise mid-text insertion — adapts automatically to whatever hotkey you configure. [Details](./docs/HOTKEY_CURSOR_FIX.md)
 
 ### 🌟 User Experience
 - **No Clipboard Pollution**: Clean status display without interfering with system clipboard
