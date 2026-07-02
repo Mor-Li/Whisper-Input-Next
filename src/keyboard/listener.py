@@ -4,6 +4,8 @@ from ..utils.logger import logger
 import time
 from .inputState import InputState
 import os
+import sys
+import threading
 
 
 class KeyboardManager:
@@ -20,6 +22,11 @@ class KeyboardManager:
         self.last_key_time = 0  # 防止重复触发
         self.KEY_DEBOUNCE_TIME = 0.3  # 按键防抖时间（秒）
         self._original_clipboard = None  # 保存原始剪贴板内容
+
+        # macOS 事件拦截：需要吞掉的组合键虚拟键码集合 + 修饰键掩码
+        # （在 start_listening 里根据实际配置计算）
+        self._suppress_vks = set()
+        self._suppress_modifier_mask = 0
         
         
         # 回调函数
@@ -295,6 +302,20 @@ class KeyboardManager:
         # 更新临时文本长度
         self.temp_text_length = len(text)
     
+    def _set_state_async(self, new_state):
+        """在后台线程里切换状态。
+
+        状态切换会同步触发 on_record_start/on_record_stop 等回调（启动/停止录音），
+        这些活如果在键盘事件回调线程里跑，会拖慢回调返回时间；而 macOS 一旦发现
+        事件 tap 的回调超时，就会把 tap 禁用，表现为"快捷键突然没反应、录音不触发"。
+        因此把状态切换挪到后台线程，保证键盘事件回调秒回。
+        """
+        threading.Thread(
+            target=lambda: setattr(self, "state", new_state),
+            name="state-change",
+            daemon=True,
+        ).start()
+
     def toggle_recording(self):
         """切换录音状态"""
         current_time = time.time()
@@ -309,12 +330,12 @@ class KeyboardManager:
             # 开始录音
             if self.state.can_start_recording:
                 self.is_recording = True
-                self.state = InputState.RECORDING
+                self._set_state_async(InputState.RECORDING)
                 logger.info("🎤 开始录音（OpenAI GPT-4o transcribe 模式）")
         else:
             # 停止录音
             self.is_recording = False
-            self.state = InputState.PROCESSING
+            self._set_state_async(InputState.PROCESSING)
             logger.info("⏹️ 停止录音（OpenAI GPT-4o transcribe 模式）")
     
     def toggle_kimi_recording(self):
@@ -331,12 +352,12 @@ class KeyboardManager:
             # 开始录音
             if self.state.can_start_recording:
                 self.is_recording = True
-                self.state = InputState.RECORDING_KIMI
+                self._set_state_async(InputState.RECORDING_KIMI)
                 logger.info("🎤 开始录音（本地 Whisper 模式）")
         else:
             # 停止录音
             self.is_recording = False
-            self.state = InputState.PROCESSING_KIMI
+            self._set_state_async(InputState.PROCESSING_KIMI)
             logger.info("⏹️ 停止录音（本地 Whisper 模式）")
 
     def on_press(self, key):
@@ -414,9 +435,108 @@ class KeyboardManager:
         except AttributeError:
             pass
     
+    def _build_hotkey_suppression(self):
+        """计算需要在系统层拦截的组合键。
+
+        目的：`Ctrl+F` / `Ctrl+I` 这类组合键在 macOS 文本框里本身是 emacs 键位
+        （Ctrl+F=光标右移一格、Ctrl+I=Tab），会在每次按下时弄乱光标。我们把这些
+        组合键事件吞掉、不透传给前台 app，就能只用它们当录音开关而没有副作用。
+
+        Returns:
+            (set[int], int): (要拦截的虚拟键码集合, 修饰键 flag 掩码)
+        """
+        from Quartz import (
+            kCGEventFlagMaskAlternate,
+            kCGEventFlagMaskCommand,
+            kCGEventFlagMaskControl,
+            kCGEventFlagMaskShift,
+        )
+
+        # Controller._mapping: unicode 字符 -> 虚拟键码（跟随当前键盘布局）
+        mapping = getattr(self.keyboard, "_mapping", {}) or {}
+
+        def vk_of(button):
+            if isinstance(button, str):
+                return mapping.get(button)
+            # 特殊键（Key 枚举）
+            return getattr(getattr(button, "value", None), "vk", None)
+
+        vks = set()
+        # 转录键（默认 f）+ 本地 Whisper 键（i）
+        for button in (self.transcriptions_button, "i"):
+            vk = vk_of(button)
+            if vk is not None:
+                vks.add(vk)
+
+        modifier_masks = {
+            Key.ctrl: kCGEventFlagMaskControl,
+            Key.ctrl_l: kCGEventFlagMaskControl,
+            Key.ctrl_r: kCGEventFlagMaskControl,
+            Key.cmd: kCGEventFlagMaskCommand,
+            Key.cmd_l: kCGEventFlagMaskCommand,
+            Key.cmd_r: kCGEventFlagMaskCommand,
+            Key.alt: kCGEventFlagMaskAlternate,
+            Key.alt_l: kCGEventFlagMaskAlternate,
+            Key.alt_r: kCGEventFlagMaskAlternate,
+            Key.shift: kCGEventFlagMaskShift,
+            Key.shift_l: kCGEventFlagMaskShift,
+            Key.shift_r: kCGEventFlagMaskShift,
+        }
+        mask = modifier_masks.get(self.translations_button, kCGEventFlagMaskControl)
+        return vks, mask
+
+    def _darwin_intercept(self, event_type, event):
+        """macOS 事件拦截回调。
+
+        把录音组合键（默认 Ctrl+F / Ctrl+I）吞掉，不透传给前台 app，避免触发
+        系统自带的 emacs 键位而移动光标。其它按键一律原样放行。
+
+        pynput 会先触发 on_press/on_release，再调用本函数决定是否放行，
+        所以拦截不会影响录音开关逻辑。本函数必须极快返回，否则事件 tap 会被
+        macOS 判定超时并禁用。
+        """
+        try:
+            from Quartz import (
+                CGEventGetFlags,
+                CGEventGetIntegerValueField,
+                kCGKeyboardEventKeycode,
+            )
+
+            vk = CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode)
+            if vk in self._suppress_vks:
+                flags = CGEventGetFlags(event)
+                if flags & self._suppress_modifier_mask:
+                    return None  # 吞掉事件，不传给前台 app
+        except Exception:
+            # 拦截逻辑绝不能因异常影响正常输入，出错就放行
+            pass
+        return event
+
     def start_listening(self):
         """开始监听键盘事件"""
-        with Listener(on_press=self.on_press, on_release=self.on_release) as listener:
+        listener_kwargs = {
+            "on_press": self.on_press,
+            "on_release": self.on_release,
+        }
+
+        # macOS: 拦截录音组合键，避免 Ctrl+F(光标右移)/Ctrl+I(Tab) 弄乱光标
+        if sys.platform == "darwin":
+            try:
+                self._suppress_vks, self._suppress_modifier_mask = (
+                    self._build_hotkey_suppression()
+                )
+                if self._suppress_vks:
+                    listener_kwargs["darwin_intercept"] = self._darwin_intercept
+                    logger.info(
+                        f"✅ 已启用组合键事件拦截 (vk={sorted(self._suppress_vks)})，"
+                        "按录音快捷键不会再移动光标"
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    f"初始化组合键拦截失败（不影响录音，仅光标可能仍会位移）: {exc}"
+                )
+
+        with Listener(**listener_kwargs) as listener:
             listener.join()
 
     def reset_state(self):
