@@ -14,6 +14,8 @@ import struct
 import gzip
 import uuid
 import logging
+import time
+import math
 from typing import Optional, Callable, AsyncGenerator
 from dataclasses import dataclass
 
@@ -24,6 +26,18 @@ from ..utils.logger import logger
 # 常量定义
 DEFAULT_SAMPLE_RATE = 16000
 SEGMENT_DURATION_MS = 100  # 每包音频时长（毫秒）
+CONNECT_TIMEOUT_SECONDS = 10
+INITIAL_RESPONSE_TIMEOUT_SECONDS = 10
+SEND_TIMEOUT_SECONDS = 5
+DISCONNECT_TIMEOUT_SECONDS = 2
+FINAL_RESPONSE_TIMEOUT_SECONDS = 5
+RECEIVE_POLL_TIMEOUT_SECONDS = 1
+RECEIVE_STALL_TIMEOUT_SECONDS = 10
+VOICE_ACTIVITY_RMS_THRESHOLD = 300
+MAX_STREAM_RECONNECT_ATTEMPTS = 2
+RECONNECT_BACKOFF_SECONDS = 0.5
+# stream_audio_chunks 默认每块 200ms；300 块约等于 60s 音频上下文。
+REPLAY_BUFFER_MAX_CHUNKS = 300
 
 
 class ProtocolVersion:
@@ -269,6 +283,54 @@ class DoubaoStreamingProcessor:
 
         return result
 
+    def _merge_stream_text(self, prefix: str, session_text: str) -> str:
+        """拼接重连前后的 ASR 文本，尽量去掉边界处的重复。"""
+        prefix = (prefix or "").strip()
+        session_text = (session_text or "").strip()
+        if not prefix:
+            return session_text
+        if not session_text:
+            return prefix
+        if prefix.endswith(session_text):
+            return prefix
+        if session_text.startswith(prefix):
+            return session_text
+
+        max_overlap = min(len(prefix), len(session_text), 80)
+        for size in range(max_overlap, 0, -1):
+            if prefix.endswith(session_text[:size]):
+                return prefix + session_text[size:]
+        return prefix + session_text
+
+    def _is_recoverable_stream_error(self, error: Optional[str]) -> bool:
+        if not error:
+            return False
+        recoverable_markers = (
+            "连接失败",
+            "发送初始请求超时",
+            "发送初始请求失败",
+            "接收结果停滞超时",
+            "连接已关闭",
+            "WebSocket 错误",
+            "接收结果失败",
+            "发送音频块失败",
+            "发送结束标记失败",
+            "等待最终识别结果超时",
+        )
+        return any(marker in error for marker in recoverable_markers)
+
+    def _is_voiced_audio_chunk(self, chunk: bytes) -> bool:
+        if len(chunk) < 2:
+            return False
+        try:
+            samples = memoryview(chunk[:len(chunk) - (len(chunk) % 2)]).cast("h")
+            if len(samples) == 0:
+                return False
+            mean_square = sum(sample * sample for sample in samples) / len(samples)
+            return math.sqrt(mean_square) >= VOICE_ACTIVITY_RMS_THRESHOLD
+        except Exception:
+            return True
+
     async def connect(self) -> bool:
         """建立 WebSocket 连接"""
         if not self.is_available():
@@ -276,7 +338,9 @@ class DoubaoStreamingProcessor:
             return False
 
         try:
-            self._session = aiohttp.ClientSession()
+            self._session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=None, sock_connect=CONNECT_TIMEOUT_SECONDS)
+            )
             connect_id = str(uuid.uuid4())
             headers = {
                 "X-Api-Resource-Id": "volc.seedasr.sauc.duration",  # 2.0版本小时版
@@ -287,7 +351,9 @@ class DoubaoStreamingProcessor:
 
             self._ws = await self._session.ws_connect(
                 self.ws_url,
-                headers=headers
+                headers=headers,
+                timeout=CONNECT_TIMEOUT_SECONDS,
+                heartbeat=20,
             )
             self._is_connected = True
             self._seq = 1
@@ -321,12 +387,12 @@ class DoubaoStreamingProcessor:
         self._is_connected = False
         try:
             if self._ws and not self._ws.closed:
-                await self._ws.close()
+                await asyncio.wait_for(self._ws.close(), timeout=DISCONNECT_TIMEOUT_SECONDS)
         except Exception:
             pass
         try:
             if self._session and not self._session.closed:
-                await self._session.close()
+                await asyncio.wait_for(self._session.close(), timeout=DISCONNECT_TIMEOUT_SECONDS)
         except Exception:
             pass
         self._ws = None
@@ -339,15 +405,20 @@ class DoubaoStreamingProcessor:
 
         try:
             request = self._build_full_client_request()
-            await self._ws.send_bytes(request)
+            await asyncio.wait_for(self._ws.send_bytes(request), timeout=SEND_TIMEOUT_SECONDS)
             logger.debug("已发送初始请求")
 
             # 等待响应
-            msg = await self._ws.receive()
+            msg = await asyncio.wait_for(
+                self._ws.receive(),
+                timeout=INITIAL_RESPONSE_TIMEOUT_SECONDS,
+            )
             if msg.type == aiohttp.WSMsgType.BINARY:
                 return self._parse_response(msg.data)
             else:
                 return StreamingResult(error=f"意外的响应类型: {msg.type}")
+        except asyncio.TimeoutError:
+            return StreamingResult(error="发送初始请求超时")
         except Exception as e:
             return StreamingResult(error=f"发送初始请求失败: {e}")
 
@@ -358,19 +429,25 @@ class DoubaoStreamingProcessor:
 
         try:
             request = self._build_audio_request(chunk, is_last)
-            await self._ws.send_bytes(request)
+            await asyncio.wait_for(self._ws.send_bytes(request), timeout=SEND_TIMEOUT_SECONDS)
             return True
+        except asyncio.TimeoutError:
+            logger.error("发送音频块超时")
+            return False
         except Exception as e:
             logger.error(f"发送音频块失败: {e}")
             return False
 
-    async def receive_result(self) -> Optional[StreamingResult]:
+    async def receive_result(self, timeout: Optional[float] = None) -> Optional[StreamingResult]:
         """接收识别结果"""
         if not self._ws:
             return None
 
         try:
-            msg = await asyncio.wait_for(self._ws.receive(), timeout=5.0)
+            if timeout is not None:
+                msg = await self._ws.receive(timeout=timeout)
+            else:
+                msg = await self._ws.receive()
             if msg.type == aiohttp.WSMsgType.BINARY:
                 return self._parse_response(msg.data)
             elif msg.type == aiohttp.WSMsgType.CLOSED:
@@ -411,87 +488,195 @@ class DoubaoStreamingProcessor:
         self._sample_rate = sample_rate
         logger.info(f"使用采样率: {sample_rate}Hz")
 
-        # 确保旧连接已清理
-        if self._is_connected or self._ws or self._session:
-            await self.disconnect()
+        error_reported = False
+        audio_iter = audio_chunk_generator.__aiter__()
+        audio_exhausted = False
+        committed_text = ""
+        latest_preview_text = ""
+        replay_chunks: list[bytes] = []
+        reconnect_attempts = 0
 
-        if not await self.connect():
-            on_error("连接失败")
-            return
+        def report_error(error: str) -> None:
+            nonlocal error_reported
+            if not error_reported:
+                on_error(error)
+                error_reported = True
 
-        try:
+        async def run_one_session(initial_replay_chunks: list[bytes]) -> tuple[bool, Optional[str], list[bytes]]:
+            nonlocal audio_exhausted, committed_text, latest_preview_text
+
+            # 确保旧连接已清理
+            if self._is_connected or self._ws or self._session:
+                await self.disconnect()
+
+            if not await self.connect():
+                return False, "连接失败", initial_replay_chunks
+
             # 发送初始请求
             init_result = await self.send_initial_request()
             if init_result and init_result.error:
-                on_error(init_result.error)
-                return
+                return False, init_result.error, initial_replay_chunks
 
-            final_text = ""
-
-            # 启动发送任务
             chunk_count = 0
-            async def sender():
-                nonlocal chunk_count
-                logger.info("📤 开始发送音频...")
-                async for chunk in audio_chunk_generator:
-                    chunk_count += 1
-                    logger.debug(f"📤 发送音频块 #{chunk_count}: {len(chunk)} bytes")
-                    await self.send_audio_chunk(chunk, is_last=False)
-                # 发送最后一包
-                logger.info(f"📤 发送完成，共 {chunk_count} 个音频块，发送结束标记")
-                await self.send_audio_chunk(b"", is_last=True)
-
-            # 启动接收任务
             recv_count = 0
-            consecutive_errors = 0
-            MAX_CONSECUTIVE_ERRORS = 3
+            stream_error: Optional[str] = None
+            session_text = ""
+            replay_buffer: list[bytes] = []
+            last_voiced_audio_at = 0.0
+
+            def remember_replay_context(chunk: bytes) -> None:
+                replay_buffer.append(chunk)
+                if len(replay_buffer) > REPLAY_BUFFER_MAX_CHUNKS:
+                    del replay_buffer[:len(replay_buffer) - REPLAY_BUFFER_MAX_CHUNKS]
+
+            async def send_regular_chunk(chunk: bytes) -> None:
+                nonlocal chunk_count, stream_error, last_voiced_audio_at
+                chunk_count += 1
+                logger.debug(f"📤 发送音频块 #{chunk_count}: {len(chunk)} bytes")
+                remember_replay_context(chunk)
+                if self._is_voiced_audio_chunk(chunk):
+                    last_voiced_audio_at = time.monotonic()
+                if not await self.send_audio_chunk(chunk, is_last=False):
+                    stream_error = "发送音频块失败"
+                    raise RuntimeError(stream_error)
+
+            async def sender():
+                nonlocal audio_exhausted, stream_error
+                logger.info("📤 开始发送音频...")
+
+                for chunk in initial_replay_chunks:
+                    if stream_error:
+                        break
+                    await send_regular_chunk(chunk)
+
+                while not stream_error and not audio_exhausted:
+                    try:
+                        chunk = await audio_iter.__anext__()
+                    except StopAsyncIteration:
+                        audio_exhausted = True
+                        break
+                    await send_regular_chunk(chunk)
+
+                if not stream_error and audio_exhausted:
+                    logger.info(f"📤 发送完成，共 {chunk_count} 个音频块，发送结束标记")
+                    if not await self.send_audio_chunk(b"", is_last=True):
+                        stream_error = "发送结束标记失败"
+                        raise RuntimeError(stream_error)
+
             async def receiver():
-                nonlocal final_text, recv_count, consecutive_errors
+                nonlocal committed_text, latest_preview_text, recv_count, session_text, stream_error
                 logger.info("📥 开始接收结果...")
+                last_result_at = time.monotonic()
                 while True:
-                    result = await self.receive_result()
+                    result = await self.receive_result(timeout=RECEIVE_POLL_TIMEOUT_SECONDS)
                     if result is None:
+                        now = time.monotonic()
+                        has_voice_after_last_result = last_voiced_audio_at > last_result_at + 0.2
+                        if (
+                            (session_text or committed_text)
+                            and has_voice_after_last_result
+                            and now - last_result_at >= RECEIVE_STALL_TIMEOUT_SECONDS
+                        ):
+                            stream_error = f"接收结果停滞超时（{RECEIVE_STALL_TIMEOUT_SECONDS}s 无新结果）"
+                            break
+                        if stream_error:
+                            break
                         continue
 
+                    last_result_at = time.monotonic()
                     recv_count += 1
                     logger.debug(f"📥 收到结果 #{recv_count}: definite='{result.definite_text}' pending='{result.pending_text}' final={result.is_final}")
 
                     if result.error:
-                        consecutive_errors += 1
-                        on_error(result.error)
-                        if result.is_final or consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
-                            if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
-                                logger.error(f"连续 {consecutive_errors} 次错误，停止接收")
-                            break
-                        continue
-
-                    consecutive_errors = 0  # 成功接收，重置错误计数
-
-                    # 合并 definite + pending 作为当前全量预览
-                    current_text = result.definite_text + result.pending_text
-                    if current_text:
-                        on_preview_text(current_text)
-                        # 持续更新最终文本（每次都取最新的全量文本）
-                        final_text = current_text
-
-                    if result.is_final:
-                        logger.info(f"📥 接收完成，共收到 {recv_count} 个结果，最终文本: '{final_text}'")
+                        stream_error = result.error
                         break
 
-            # 并行执行发送和接收
+                    current_text = result.definite_text + result.pending_text
+                    if current_text:
+                        session_text = current_text
+                        latest_preview_text = self._merge_stream_text(committed_text, session_text)
+                        on_preview_text(latest_preview_text)
+
+                    if result.is_final:
+                        logger.info(f"📥 接收完成，共收到 {recv_count} 个结果，最终文本: '{session_text}'")
+                        break
+
             sender_task = asyncio.create_task(sender())
             receiver_task = asyncio.create_task(receiver())
 
-            await asyncio.gather(sender_task, receiver_task)
+            try:
+                await sender_task
+            except Exception as exc:
+                if not stream_error:
+                    stream_error = f"发送任务失败: {exc}"
 
-            # 流式结束后一次性输出最终文本
-            if final_text:
-                on_final_text(final_text)
+            if stream_error:
+                if session_text:
+                    committed_text = self._merge_stream_text(committed_text, session_text)
+                    latest_preview_text = committed_text
+                if not receiver_task.done():
+                    receiver_task.cancel()
+                    await asyncio.gather(receiver_task, return_exceptions=True)
+                return False, stream_error, list(replay_buffer)
 
-            on_complete()
+            try:
+                await asyncio.wait_for(receiver_task, timeout=FINAL_RESPONSE_TIMEOUT_SECONDS)
+            except asyncio.TimeoutError:
+                stream_error = "等待最终识别结果超时"
+                receiver_task.cancel()
+                await asyncio.gather(receiver_task, return_exceptions=True)
+            except Exception as exc:
+                stream_error = f"接收任务异常: {exc}"
+
+            if stream_error:
+                if session_text:
+                    committed_text = self._merge_stream_text(committed_text, session_text)
+                    latest_preview_text = committed_text
+                return False, stream_error, list(replay_buffer)
+
+            if session_text:
+                committed_text = self._merge_stream_text(committed_text, session_text)
+                latest_preview_text = committed_text
+
+            return True, None, []
+
+        try:
+            while True:
+                success = False
+                stream_error: Optional[str] = None
+                try:
+                    success, stream_error, replay_chunks = await run_one_session(replay_chunks)
+                finally:
+                    await self.disconnect()
+
+                if success:
+                    final_output = latest_preview_text or committed_text
+                    if final_output:
+                        on_final_text(final_output)
+                    on_complete()
+                    return
+
+                if (
+                    self._is_recoverable_stream_error(stream_error)
+                    and reconnect_attempts < MAX_STREAM_RECONNECT_ATTEMPTS
+                ):
+                    reconnect_attempts += 1
+                    logger.warning(
+                        "豆包流式连接异常，尝试自动重连 %d/%d: %s",
+                        reconnect_attempts,
+                        MAX_STREAM_RECONNECT_ATTEMPTS,
+                        stream_error,
+                    )
+                    if replay_chunks:
+                        logger.info("将补发最近音频上下文 %d 个块", len(replay_chunks))
+                    await asyncio.sleep(RECONNECT_BACKOFF_SECONDS)
+                    continue
+
+                report_error(stream_error or "流式转录失败")
+                return
 
         except Exception as e:
-            on_error(f"处理失败: {e}")
+            report_error(f"处理失败: {e}")
         finally:
             await self.disconnect()
 

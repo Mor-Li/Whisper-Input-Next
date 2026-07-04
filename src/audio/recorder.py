@@ -447,6 +447,16 @@ class AudioRecorder:
         resample_ratio = target_sample_rate / self.sample_rate
         need_resample = abs(resample_ratio - 1.0) > 0.01
 
+        def to_pcm_bytes(audio):
+            if need_resample:
+                target_length = int(len(audio) * resample_ratio)
+                indices = np.linspace(0, len(audio) - 1, target_length)
+                audio = np.interp(indices, np.arange(len(audio)), audio.flatten())
+            audio = audio.flatten()
+            audio = audio * 32767
+            audio = np.clip(audio, -32768, 32767)
+            return audio.astype(np.int16).tobytes()
+
         logger.info(f"🎵 开始生成音频块: {self.sample_rate}Hz -> {target_sample_rate}Hz, 每块 {chunk_duration_ms}ms ({samples_per_chunk_original} samples)")
 
         while self.recording or not self.audio_queue.empty():
@@ -470,26 +480,12 @@ class AudioRecorder:
                     remaining = audio[samples_per_chunk_original:]
                     accumulated_samples = [remaining] if len(remaining) > 0 else []
 
-                    # 重采样（如果需要）
-                    if need_resample:
-                        # 简单的线性插值重采样
-                        target_length = int(len(chunk_data) * resample_ratio)
-                        indices = np.linspace(0, len(chunk_data) - 1, target_length)
-                        chunk_data = np.interp(indices, np.arange(len(chunk_data)), chunk_data.flatten())
-
-                    # 转换为 bytes (16-bit PCM)
-                    # sounddevice 返回的是 float32 格式 [-1, 1]，需要缩放到 int16 范围
-                    chunk_data = chunk_data.flatten()
-                    # 缩放到 int16 范围 [-32768, 32767]
-                    chunk_data = chunk_data * 32767
-                    chunk_data = np.clip(chunk_data, -32768, 32767)
-                    chunk_bytes = chunk_data.astype(np.int16).tobytes()
+                    chunk_bytes = to_pcm_bytes(chunk_data)
                     chunk_count += 1
                     logger.debug(f"🎵 yield 音频块 #{chunk_count}: {len(chunk_bytes)} bytes")
                     yield chunk_bytes
 
             except queue.Empty:
-                # 队列为空，等待一会
                 await asyncio.sleep(0.02)  # 20ms
 
         # 录音结束，输出剩余的音频
@@ -497,15 +493,7 @@ class AudioRecorder:
         if accumulated_samples:
             audio = np.concatenate(accumulated_samples)
             if len(audio) > 0:
-                audio = audio.flatten()
-                if need_resample:
-                    target_length = int(len(audio) * resample_ratio)
-                    indices = np.linspace(0, len(audio) - 1, target_length)
-                    audio = np.interp(indices, np.arange(len(audio)), audio)
-                # 缩放到 int16 范围
-                audio = audio * 32767
-                audio = np.clip(audio, -32768, 32767)
-                chunk_bytes = audio.astype(np.int16).tobytes()
+                chunk_bytes = to_pcm_bytes(audio)
                 chunk_count += 1
                 logger.info(f"🎵 yield 最后音频块 #{chunk_count}: {len(chunk_bytes)} bytes")
                 yield chunk_bytes

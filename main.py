@@ -430,6 +430,11 @@ class VoiceAssistant:
             self.start_openai_recording()
             return
 
+        if self._streaming_thread and self._streaming_thread.is_alive():
+            logger.warning("上一轮豆包流式转录仍在清理中，忽略本次启动")
+            self.keyboard_manager.reset_state()
+            return
+
         # 启动流式录音（recorder 内部会处理残留状态）
         error = self.audio_recorder.start_streaming_recording()
         if error:
@@ -470,26 +475,56 @@ class VoiceAssistant:
 
         # 显示浮动预览窗口
         self.floating_preview.show()
+        latest_preview_text = ""
+        text_emitted = False
+        stream_failed = False
+
+        def ensure_streaming_archive_path() -> Optional[str]:
+            if self._current_streaming_archive_path:
+                return self._current_streaming_archive_path
+
+            audio = self.audio_recorder.stop_streaming_recording()
+            audio_bytes = self._buffer_to_bytes(audio)
+            if audio_bytes:
+                self._current_streaming_archive_path = self._archive_audio_bytes(audio_bytes)
+            return self._current_streaming_archive_path
+
+        def emit_streaming_text(text: str, reason: str) -> bool:
+            nonlocal text_emitted
+            text = (text or "").strip()
+            if not text or text_emitted:
+                return False
+
+            text_emitted = True
+            logger.info(f"[最终输入:{reason}] {text}")
+            archive_path = ensure_streaming_archive_path()
+            self._save_transcription_cache(
+                archive_path,
+                text,
+                service="doubao",
+                model="bigmodel",
+                mode="transcriptions",
+            )
+            self.keyboard_manager.type_text(text, None)
+            return True
 
         def on_preview_text(text: str):
             """收到文本更新，显示在浮动预览窗口（不输入到目标应用）"""
+            nonlocal latest_preview_text
+            if text:
+                latest_preview_text = text
             self.floating_preview.update_text(text)
 
         def on_final_text(text: str):
             """流式结束，一次性输入最终文本到目标应用"""
-            if text:
-                logger.info(f"[最终输入] {text}")
-                self._save_transcription_cache(
-                    self._current_streaming_archive_path,
-                    text,
-                    service="doubao",
-                    model="bigmodel",
-                    mode="transcriptions",
-                )
-                self.keyboard_manager.type_text(text, None)
+            if stream_failed:
+                return
+            emit_streaming_text(text, "final")
 
         def on_complete():
             """转录完成"""
+            if stream_failed:
+                return
             logger.info("✅ 豆包流式转录完成")
             self.floating_preview.hide()
             # 不在这里 stop_streaming_recording——按键 / auto_stop / disconnect 路径
@@ -498,14 +533,26 @@ class VoiceAssistant:
 
         def on_error(error: str):
             """发生错误"""
+            nonlocal stream_failed
+            if stream_failed:
+                return
+            stream_failed = True
+            recovery_text = latest_preview_text.strip()
+            recovery_emitted = False
             logger.error(f"❌ 豆包流式转录错误: {error}")
+            if recovery_text:
+                logger.warning("豆包流式异常，输出本轮最新预览文本以避免丢稿")
+                recovery_emitted = emit_streaming_text(recovery_text, f"error:{error}")
             self.floating_preview.hide()
             self.audio_recorder.reset_streaming_state(reason=f"豆包流式错误: {error}")
-            self.keyboard_manager.reset_state()
+            self.keyboard_manager.reset_state(restore_clipboard=not recovery_emitted)
+            if recovery_emitted:
+                self.keyboard_manager.keep_clipboard_text(recovery_text)
 
         # 豆包 API 只支持 16000Hz，stream_audio_chunks 会自动重采样
+        processor = DoubaoStreamingProcessor()
         try:
-            await self.doubao_processor.process_audio_stream(
+            await processor.process_audio_stream(
                 self.audio_recorder.stream_audio_chunks(target_sample_rate=16000),
                 on_preview_text,
                 on_final_text,

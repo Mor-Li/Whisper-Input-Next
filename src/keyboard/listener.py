@@ -219,6 +219,20 @@ class KeyboardManager:
             pyperclip.copy(self._original_clipboard)
             self._original_clipboard = None
 
+    def keep_clipboard_text(self, text):
+        """将指定文本保留到剪贴板，避免后续状态重置恢复旧内容。"""
+        if not text:
+            return False
+
+        try:
+            pyperclip.copy(text)
+            self._original_clipboard = None
+            logger.info("已将兜底转录文本保留到剪贴板")
+            return True
+        except Exception as e:
+            logger.warning(f"保留兜底转录文本到剪贴板失败: {e}")
+            return False
+
     def type_text(self, text, error_message=None):
         """将文字输入到当前光标位置
         
@@ -539,13 +553,16 @@ class KeyboardManager:
         with Listener(**listener_kwargs) as listener:
             listener.join()
 
-    def reset_state(self):
+    def reset_state(self, *, restore_clipboard=True):
         """重置所有状态和临时文本"""
         # 清除临时文本
         self._delete_previous_text()
         
-        # 恢复剪贴板
-        self._restore_clipboard()
+        # 恢复剪贴板。异常兜底输出时会跳过恢复，保留救援文本给用户手动粘贴。
+        if restore_clipboard:
+            self._restore_clipboard()
+        else:
+            self._original_clipboard = None
         
         # 重置状态标志
         self.ctrl_pressed = False
