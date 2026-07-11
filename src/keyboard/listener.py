@@ -1,11 +1,40 @@
 from pynput.keyboard import Controller, Key, Listener
 import pyperclip
 from ..utils.logger import logger
+import subprocess
 import time
 from .inputState import InputState
 import os
 import sys
 import threading
+
+
+class _TapCapturingListener(Listener):
+    """记住底层 event tap 引用的 pynput Listener（仅 macOS 使用）。
+
+    pynput 只在启动时启用一次 tap；macOS 一旦判定回调超时就把 tap 禁用，
+    pynput 不会重新启用，热键从此失灵、只能重启进程。把 tap 引用存下来，
+    失效时（_darwin_intercept / watchdog）才有办法调 CGEventTapEnable 复活它。
+    """
+
+    tap_ref = None
+
+    def _create_event_tap(self):
+        tap = super()._create_event_tap()
+        self.tap_ref = tap
+        return tap
+
+
+def _process_name(pid):
+    """按 pid 查进程名，用于点名谁占用了 Secure Input"""
+    try:
+        out = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "comm="],
+            capture_output=True, text=True, timeout=2,
+        )
+        return os.path.basename(out.stdout.strip()) or "未知进程"
+    except Exception:
+        return "未知进程"
 
 
 class KeyboardManager:
@@ -27,6 +56,10 @@ class KeyboardManager:
         # （在 start_listening 里根据实际配置计算）
         self._suppress_vks = set()
         self._suppress_modifier_mask = 0
+
+        # tap 自愈：当前 listener 引用 + 禁用告警的限频时间戳
+        self._listener = None
+        self._tap_disabled_log_time = 0.0
         
         
         # 回调函数
@@ -513,8 +546,27 @@ class KeyboardManager:
             from Quartz import (
                 CGEventGetFlags,
                 CGEventGetIntegerValueField,
+                CGEventTapEnable,
+                kCGEventTapDisabledByTimeout,
+                kCGEventTapDisabledByUserInput,
                 kCGKeyboardEventKeycode,
             )
+
+            # macOS 禁用 tap 前会送来一个通知事件（典型诱因：录音收尾时进程
+            # 正忙，恰好又快速连按导致回调排队超时）。在这里立刻重新启用，
+            # 否则热键从此失灵、只能重启进程。
+            if event_type in (kCGEventTapDisabledByTimeout,
+                              kCGEventTapDisabledByUserInput):
+                tap = getattr(self._listener, "tap_ref", None)
+                if tap is not None:
+                    CGEventTapEnable(tap, True)
+                    now = time.time()
+                    if now - self._tap_disabled_log_time > 5:
+                        self._tap_disabled_log_time = now
+                        logger.warning(
+                            "⚠️ 键盘事件 tap 被系统禁用（回调超时），已自动重新启用"
+                        )
+                return event
 
             vk = CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode)
             if vk in self._suppress_vks:
@@ -532,9 +584,11 @@ class KeyboardManager:
             "on_press": self.on_press,
             "on_release": self.on_release,
         }
+        listener_cls = Listener
 
         # macOS: 拦截录音组合键，避免 Ctrl+F(光标右移)/Ctrl+I(Tab) 弄乱光标
         if sys.platform == "darwin":
+            listener_cls = _TapCapturingListener
             try:
                 self._suppress_vks, self._suppress_modifier_mask = (
                     self._build_hotkey_suppression()
@@ -550,8 +604,58 @@ class KeyboardManager:
                     f"初始化组合键拦截失败（不影响录音，仅光标可能仍会位移）: {exc}"
                 )
 
-        with Listener(**listener_kwargs) as listener:
+        with listener_cls(**listener_kwargs) as listener:
+            self._listener = listener
+            if sys.platform == "darwin":
+                self._start_tap_watchdog(listener)
             listener.join()
+
+    def _start_tap_watchdog(self, listener):
+        """后台体检线程：热键"突然失灵"的两种根因都在这里兜底。
+
+        1. tap 被系统禁用：回调超时后 macOS 禁掉 tap，pynput 不会重新启用。
+           _darwin_intercept 里会就地复活，这里是二道保险（比如禁用通知
+           本身丢了、或没启用组合键拦截时）。
+        2. Secure Input 被占用：终端的"安全键盘输入"、sudo 密码框、锁屏
+           等会开启 Secure Input，期间所有 event tap 收不到键盘事件（按键
+           直接透传给前台 app），对方释放后自动恢复。这里点名占用进程，
+           以后失灵看日志就知道原因。
+        """
+        def _watch():
+            from Quartz import (
+                CGEventTapEnable,
+                CGEventTapIsEnabled,
+                CGSessionCopyCurrentDictionary,
+            )
+
+            last_secure_pid = None
+            while listener.running:
+                time.sleep(5)
+                try:
+                    tap = getattr(listener, "tap_ref", None)
+                    if tap is not None and not CGEventTapIsEnabled(tap):
+                        CGEventTapEnable(tap, True)
+                        logger.warning(
+                            "⚠️ 键盘事件 tap 处于禁用状态，watchdog 已重新启用"
+                        )
+
+                    session = CGSessionCopyCurrentDictionary() or {}
+                    pid = session.get("kCGSSessionSecureInputPID")
+                    if pid != last_secure_pid:
+                        if pid is not None:
+                            logger.warning(
+                                f"⚠️ 进程 {_process_name(pid)} (pid={pid}) 开启了 "
+                                "Secure Input，热键会失灵直到它释放"
+                                "（常见来源：终端的\"安全键盘输入\"、sudo 密码、锁屏）"
+                            )
+                        else:
+                            logger.info("✅ Secure Input 已释放，热键恢复正常")
+                        last_secure_pid = pid
+                except Exception:
+                    # 体检线程绝不能崩；单轮失败下一轮重试
+                    pass
+
+        threading.Thread(target=_watch, name="tap-watchdog", daemon=True).start()
 
     def reset_state(self, *, restore_clipboard=True):
         """重置所有状态和临时文本"""
