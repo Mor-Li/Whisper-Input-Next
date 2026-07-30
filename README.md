@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <a href="./VERSION">
-    <img src="https://img.shields.io/badge/version-3.3.0-blue.svg" alt="Version" />
+  <a href="./docs/[V3.1.0]_VERSION_CONTROL.md">
+    <img src="https://img.shields.io/badge/version-3.3.1-blue.svg" alt="Version" />
   </a>
   <a href="https://www.python.org/">
     <img src="https://img.shields.io/badge/python-3.12+-green.svg" alt="Python" />
@@ -266,11 +266,31 @@ The program displays concise status indicators at the cursor position during run
 
 ## 📚 Feature Documentation
 
-- [🔊 Audio Archive Feature](./docs/[V3.0.0]_AUDIO_ARCHIVE_FEATURE.md) - *Introduced in v3.0.0*
-- [🤖 Kimi Polish Integration](./docs/[DEPRECATED]_KIMI_USAGE.md) - *Deprecated*
-- [📊 Status Display Improvements](./docs/[V3.0.0]_STATUS_DISPLAY_IMPROVEMENTS.md) - *Introduced in v3.0.0*
-- [🔄 Branch Differences Comparison](./docs/[V3.0.0]_BRANCH_DIFFERENCES.md) - *Introduced in v3.0.0*
-- [📋 Version Control Documentation](./docs/[V3.0.0]_VERSION_CONTROL.md) - *Established in v3.0.0*
+**Features**
+
+- [🔊 Audio Archive & Transcription Cache](./docs/[V3.0.0]_AUDIO_ARCHIVE_FEATURE.md) - *v3.0.0, hardened in v3.3.1*
+- [🛡️ Transcription Cache Data Safety](./docs/TRANSCRIPTION_CACHE_SAFETY.md) - *v3.3.1* — why the cache can no longer wipe itself, and how to rescue it if it ever does
+- [⚡ Async Transcription Queue](./docs/[V3.2.0]_ASYNC_TRANSCRIPTION_QUEUE.md) - *v3.2.0*
+- [🔔 Audio Device Disconnect Notification](./docs/device_notification.md)
+- [🖥️ macOS Status Bar Indicator](./docs/[V3.3.0]_STATUS_BAR.md) - *v3.3.0*
+- [📊 Status Display Improvements](./docs/[V3.0.0]_STATUS_DISPLAY_IMPROVEMENTS.md) - *v3.0.0*
+
+**macOS hotkey pitfalls**
+
+- [🖱️ Cursor Drift Fix](./docs/HOTKEY_CURSOR_FIX.md) — why `Ctrl+F`/`Ctrl+I` no longer nudge your caret
+- [🔧 Dead Event-Tap Self-Heal](./docs/HOTKEY_DEAD_TAP_SELFHEAL.md) - *v3.3.1* — read this first when hotkeys suddenly stop responding
+
+**Project background**
+
+- [🔄 Branch Differences vs Upstream](./docs/[V3.0.0]_BRANCH_DIFFERENCES.md) - *v3.0.0*
+- [📋 Version Control Documentation](./docs/[V3.1.0]_VERSION_CONTROL.md) - *v3.1.0*
+- [📝 Release Notes v3.1.0](./docs/[V3.1.0]_RELEASE_NOTES.md)
+- [✍️ Why This Project (Chinese blog post)](./docs/[V3.0.0]_知乎blog.md)
+
+**Deprecated**
+
+- [🤖 Kimi Polish Integration](./docs/[DEPRECATED]_KIMI_USAGE.md)
+- [📄 Upstream Project README (archive)](./docs/[DEPRECATED]_README_upstream.md)
 
 ## 🛠️ Development Status
 

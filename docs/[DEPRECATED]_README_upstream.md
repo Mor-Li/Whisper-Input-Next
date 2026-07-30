@@ -1,4 +1,26 @@
-# Whisper Input
+# [DEPRECATED] 上游原项目 README（存档）
+
+> ⚠️ **注意**: 这是上游原项目 [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/Whisper-Input) 的 README 存档，内容停留在 2025 年 7 月，**不适用于本项目**，仅作历史参考保留。
+
+## 与本项目的主要出入
+
+| 这份文档说 | 本项目实际 |
+|-----------|-----------|
+| 按住 Option 键录音，抬起结束 | 按一下 `Ctrl+F` 开始、再按一下结束，全程免手 |
+| Groq / SiliconFlow 为主力后端 | 豆包流式 ASR（默认）/ OpenAI GPT-4o transcribe / 本地 whisper.cpp |
+| `Ctrl+I` 是 Kimi 润色模式 | `Ctrl+I` 是本地 whisper.cpp 省钱模式，Kimi 润色已废弃 |
+| 安装用 `pip-compile` + `venv` | 见根目录 README |
+| 克隆 `ErlichLiu/Whisper-Input` | 本项目是 `Mor-Li/Whisper-Input-Next` |
+
+文中提到的 `test_kimi_api.py`、`test_local_whisper.py`、`KIMI_USAGE.md` 在本项目中均已不存在。
+
+**当前文档请看**：[English README](../README.md) · [中文文档](./README_zh-CN.md)
+
+---
+
+以下为存档原文。
+
+## 原文
 
 Whisper Input 是受到即友[FeiTTT](https://web.okjike.com/u/DB98BE7A-9DBB-4730-B6B9-2DC883B986B1)启发做的一个简单的 python 代码。可以实现按下 Option 按钮开始录制，抬起按钮就结束录制，并调用 Groq `Whisper Large V3 Turbo` 模型进行转译，由于 Groq 的速度非常快，所以大部分的语音输入都可以在 1-2s 内反馈。并且得益于 whisper 的强大能力，转译效果非常不错。
 
@@ -227,7 +249,7 @@ export ENABLE_KIMI_POLISH=false
 python test_kimi_api.py
 ```
 
-详细使用说明请参考：[KIMI_USAGE.md](./KIMI_USAGE.md)
+详细使用说明请参考：[KIMI_USAGE.md](./[DEPRECATED]_KIMI_USAGE.md)（本项目中已废弃）
 
 ## Tips
 

@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <a href="../VERSION">
-    <img src="https://img.shields.io/badge/version-3.0.0-blue.svg" alt="Version" />
+  <a href="./[V3.1.0]_VERSION_CONTROL.md">
+    <img src="https://img.shields.io/badge/version-3.3.1-blue.svg" alt="Version" />
   </a>
   <a href="https://www.python.org/">
     <img src="https://img.shields.io/badge/python-3.12+-green.svg" alt="Python" />
@@ -34,7 +34,7 @@
 
 ## 🚀 项目背景
 
-本项目基于 [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/Whisper-Input) 进行二次开发。原项目已停止维护数月，我们在其基础上进行了大量功能扩展和架构优化，添加了OpenAI GPT-4o transcribe集成、音频存档、本地whisper支持等重要功能。[为什么要用这个项目？](./docs/[V3.0.0]_知乎blog.md)
+本项目基于 [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/Whisper-Input) 进行二次开发。原项目已停止维护数月，我们在其基础上进行了大量功能扩展和架构优化，添加了OpenAI GPT-4o transcribe集成、音频存档、本地whisper支持等重要功能。[为什么要用这个项目？](./[V3.0.0]_知乎blog.md)
 
 ## ✨ 主要特性
 
@@ -227,11 +227,31 @@ alias whisper_input_off='tmux kill-session -t whisper-input'
 
 ## 📚 功能文档
 
-- [🔊 音频存档功能](./docs/[V3.0.0]_AUDIO_ARCHIVE_FEATURE.md) - *v3.0.0引入*
-- [🤖 Kimi润色集成](./docs/[DEPRECATED]_KIMI_USAGE.md) - *已废弃*
-- [📊 状态显示优化](./docs/[V3.0.0]_STATUS_DISPLAY_IMPROVEMENTS.md) - *v3.0.0引入*
-- [🔄 分支差异对比](./docs/[V3.0.0]_BRANCH_DIFFERENCES.md) - *v3.0.0引入*
-- [📋 版本控制文档](./docs/[V3.0.0]_VERSION_CONTROL.md) - *v3.0.0建立*
+**功能说明**
+
+- [🔊 音频存档与转录缓存](./[V3.0.0]_AUDIO_ARCHIVE_FEATURE.md) - *v3.0.0引入，v3.3.1加固*
+- [🛡️ 转录缓存的数据安全](./TRANSCRIPTION_CACHE_SAFETY.md) - *v3.3.1* —— 缓存为什么不会再自己清空，万一出事怎么抢救
+- [⚡ 异步转录队列](./[V3.2.0]_ASYNC_TRANSCRIPTION_QUEUE.md) - *v3.2.0引入*
+- [🔔 音频设备断开通知](./device_notification.md)
+- [🖥️ macOS 状态栏指示器](./[V3.3.0]_STATUS_BAR.md) - *v3.3.0引入*
+- [📊 状态显示优化](./[V3.0.0]_STATUS_DISPLAY_IMPROVEMENTS.md) - *v3.0.0引入*
+
+**macOS 快捷键的坑**
+
+- [🖱️ 光标位移修复](./HOTKEY_CURSOR_FIX.md) —— `Ctrl+F`/`Ctrl+I` 为什么不会再顶走光标
+- [🔧 热键失灵自愈](./HOTKEY_DEAD_TAP_SELFHEAL.md) - *v3.3.1* —— 按键突然没反应先看这篇
+
+**项目背景**
+
+- [🔄 分支差异对比](./[V3.0.0]_BRANCH_DIFFERENCES.md) - *v3.0.0引入*
+- [📋 版本控制文档](./[V3.1.0]_VERSION_CONTROL.md) - *v3.1.0建立*
+- [📝 v3.1.0 更新说明](./[V3.1.0]_RELEASE_NOTES.md)
+- [✍️ 为什么做这个项目（知乎）](./[V3.0.0]_知乎blog.md)
+
+**已废弃**
+
+- [🤖 Kimi润色集成](./[DEPRECATED]_KIMI_USAGE.md)
+- [📄 上游原项目 README 存档](./[DEPRECATED]_README_upstream.md)
 
 ## 🛠️ 开发状态
 
