@@ -27,21 +27,10 @@ ALLOWED_DEVICE_KEYWORDS = [
 
 
 class AudioRecorder:
-    # 卡在 PortAudio stop() 里、尚未收尾的关流线程。
-    # 只要还有存活的，就绝不能调用 sd._terminate()（见 _get_best_input_device）。
-    _stuck_closers = []
-    _stuck_lock = threading.Lock()
-
-    @classmethod
-    def _register_stuck_closer(cls):
-        with cls._stuck_lock:
-            cls._stuck_closers.append(threading.current_thread())
-
-    @classmethod
-    def _has_stuck_stream(cls):
-        with cls._stuck_lock:
-            cls._stuck_closers = [t for t in cls._stuck_closers if t.is_alive()]
-            return bool(cls._stuck_closers)
+    # 从派发关流任务前一直保护到 close() 完成，而不只是 stop() 超时之后。
+    # 同一把锁也保护设备刷新，避免检查通过后才有关流任务开始。
+    _pending_closures = 0
+    _stream_lifecycle_lock = threading.Lock()
 
     def __init__(self):
         self.recording = False
@@ -115,12 +104,15 @@ class AudioRecorder:
         """Fire-and-forget 关闭一个 PortAudio stream。
 
         必须先把 self.stream 在锁内置 None 后再把 stream 传进来——
-        本方法立刻返回，真正的 stop/abort/close 在 daemon 线程做。
+        真正的 stop/close 在 daemon 线程做，调用者不等待关流完成。
         即便 PortAudio 在设备半坏状态下 stop() 永远不返回，也只挂这条 daemon，
         不会回堵调用者（pynput 按键回调、doubao 线程、Timer 线程都不被阻塞）。
         """
         if stream is None:
             return
+
+        with AudioRecorder._stream_lifecycle_lock:
+            AudioRecorder._pending_closures += 1
 
         def _close_worker():
             inner = threading.Thread(target=stream.stop, name="pa-stop-inner", daemon=True)
@@ -130,8 +122,7 @@ class AudioRecorder:
                 # stop() 仍在 PortAudio/CoreAudio 内部执行。此刻并发调用 abort()/close()，
                 # 或在别处调用 Pa_Terminate()，都会和它抢同一把 CoreAudio 递归锁，
                 # 把整个音频客户端锁死（表现为之后按热键再也起不了新流）。
-                # 唯一安全的做法是等它自己返回，期间由 _has_stuck_stream() 挡住设备刷新。
-                AudioRecorder._register_stuck_closer()
+                # 等它自己返回；关流任务从派发前就已阻止设备刷新。
                 logger.warning(
                     "⚠️ stream.stop() 5s 未返回，转入后台等待（期间跳过设备列表刷新以避免 CoreAudio 死锁）"
                 )
@@ -140,9 +131,18 @@ class AudioRecorder:
             try:
                 stream.close()
             except Exception as exc:
-                logger.warning(f"关闭音频流时出错: {exc}")
+                # 无法确认流已关闭时继续禁止刷新，不能因工作线程退出就解除保护。
+                logger.warning(f"关闭音频流时出错，继续跳过设备列表刷新: {exc}")
+            else:
+                with AudioRecorder._stream_lifecycle_lock:
+                    AudioRecorder._pending_closures -= 1
 
-        threading.Thread(target=_close_worker, name="pa-close", daemon=True).start()
+        try:
+            threading.Thread(target=_close_worker, name="pa-close", daemon=True).start()
+        except Exception:
+            # 任务未能派发，流同样没有关闭，保留保护并让调用者处理错误。
+            logger.exception("无法启动音频关流线程，继续跳过设备列表刷新")
+            raise
 
     def _finalize_recording(self, abort=False, *, enforce_min_duration=True, clear_queue=True):
         with self._recording_lock:
@@ -267,12 +267,14 @@ class AudioRecorder:
             # sd._terminate() 会调用 Pa_Terminate()，它要收拾所有仍打开的流；一旦有流
             # 卡在 stop() 里，这里就会永久阻塞，热键从此彻底失灵。存在卡住的流时跳过
             # 本次刷新——代价只是可能认不出新插进来的麦克风，远好过整个进程锁死。
-            # 卡住的流一旦收尾完成，本判断会自动恢复放行。
-            if AudioRecorder._has_stuck_stream():
-                logger.warning("⚠️ 存在尚未收尾的音频流，跳过设备列表刷新以避免 Pa_Terminate() 死锁")
-            else:
-                sd._terminate()
-                sd._initialize()
+            # 所有关流任务完成后自动恢复。检查和刷新必须持同一把锁，
+            # 避免检查时没有关流任务、真正刷新时却已开始 stop()/close()。
+            with AudioRecorder._stream_lifecycle_lock:
+                if AudioRecorder._pending_closures:
+                    logger.warning("⚠️ 存在尚未收尾的音频流，跳过设备列表刷新以避免 Pa_Terminate() 死锁")
+                else:
+                    sd._terminate()
+                    sd._initialize()
 
             devices = sd.query_devices()
             input_devices = [(i, d) for i, d in enumerate(devices) if d['max_input_channels'] > 0]
