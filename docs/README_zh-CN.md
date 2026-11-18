@@ -6,10 +6,10 @@
 
 <p align="center">
   <a href="./[V3.1.0]_VERSION_CONTROL.md">
-    <img src="https://img.shields.io/badge/version-3.3.1-blue.svg" alt="Version" />
+    <img src="https://img.shields.io/badge/version-3.4.0-blue.svg" alt="Version" />
   </a>
   <a href="https://www.python.org/">
-    <img src="https://img.shields.io/badge/python-3.12+-green.svg" alt="Python" />
+    <img src="https://img.shields.io/badge/python-3.12-green.svg" alt="Python" />
   </a>
   <a href="../LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" />
@@ -29,6 +29,8 @@
 - **💸 没有中间商赚差价** —— 你直接充源头厂商的 API（豆包 / OpenAI），按成本价用。充几块钱能用好几个月。我们一分钱不赚——没有订阅、没有加价、中间没人抽成。
 - **🎯 二次识别（Two-Pass）** —— 说话停顿时，用准确率更高的非流式模型对每句话重新识别一遍，质量明显提升（例如"广告位" → "光标位置"）。
 - **🔌 转录引擎任选** —— 豆包流式 ASR（默认，超便宜）、OpenAI GPT-4o transcribe，或完全离线的本地 whisper.cpp。
+- **🔁 一直在线** —— 开机自动启动，崩溃或麦克风卡住后几秒内自己重启，不用再打开终端手动拉起。
+- **📊 看得见自己的用量** —— 点一下菜单栏图标，就能看到今天转了多少条、累计多少条，还有一张能一路往回滑到第一条录音的每日柱状图。
 
 > 🐧 **Linux 用户**：Linux 桌面端支持在 [`linux` 分支](https://github.com/Mor-Li/Whisper-Input-Next/tree/linux) 上,由 [@MiaoDX](https://github.com/MiaoDX) 贡献并维护,感谢！我自己用 macOS,不亲自测试/维护该分支,所以它可能会落后于 `main`,请到该分支跟踪或贡献。
 
@@ -38,27 +40,33 @@
 
 ## ✨ 主要特性
 
+### 🔥 v3.4.0 新增：自动恢复、开机自启、使用统计
+- **不再"一直转圈"**：macOS 的 CoreAudio 偶尔在关闭麦克风时永远不返回，以前程序会一直卡住，只能手动重启。现在程序会检测到这种情况，做完手上的转录，几秒内自己重启
+- **开机自启**：`./scripts/install_autostart.sh` 安装一个 LaunchAgent，`start.sh` 用守护循环运行程序
+- **使用统计菜单**：点菜单栏图标，看今天、最近 7 天、最近 30 天、累计各转了多少条，柱状图可以按天往回滑，鼠标停在柱子上显示那天的日期和条数
+- **代码瘦身**：删掉了走不到的旧功能，依赖改用 uv 管理
+
 ### 🎯 核心功能
 - **多种转录服务**: 豆包流式识别（默认）、OpenAI GPT-4o transcribe、本地 whisper.cpp
-- **智能快捷键**: Ctrl+F (OpenAI高质量) / Ctrl+I (本地省钱模式)
+- **智能快捷键**: Ctrl+F（豆包流式，默认）/ Ctrl+I（本地省钱模式）
 - **音频存档**: 自动保存所有录音，支持历史回放
-- **失败重试**: 智能错误处理和重试机制
-- **实时状态**: 直观的录音和处理状态显示
+- **自动重试**: OpenAI 转录失败时用已保存的录音自动重试
+- **菜单栏状态**: 图标显示空闲、录音中、转录中，点开看使用统计
 
 ### 🔧 技术特性
-- **双处理器架构**: 同时支持云端和本地转录
-- **180秒超时**: OpenAI专用长时间超时支持
-- **自动标点**: GPT-4o transcribe自带标点符号
+- **流式加批量双架构**: 同时支持云端流式、云端批量和本地转录
+- **长录音**: 单次最长 10 分钟
+- **自动恢复**: 守护循环在崩溃或麦克风卡住后自动重启程序
 - **隐私保护**: 本地处理选项，数据不上传
-- **光标零位移快捷键** *(macOS)*: 在 Quartz 事件层拦截录音快捷键，按键切换录音不会移动文本光标（`Ctrl+F`/`Ctrl+I` 不再触发系统自带的"光标右移/Tab"），可精确插入到文本任意位置；且会自动跟随你配置的快捷键。[详细说明](./HOTKEY_CURSOR_FIX.md)
+- **光标零位移快捷键** *(macOS)*: 在 Quartz 事件层拦截录音快捷键，按键切换录音不会移动文本光标（`Ctrl+F`/`Ctrl+I` 不再触发系统自带的"光标右移/Tab"），可精确插入到文本任意位置，并且会自动跟随你配置的快捷键。[详细说明](./HOTKEY_CURSOR_FIX.md)
 
 ## 📦 快速开始
 
 ### 环境要求
-- Python 3.12+
-- macOS/Linux (Windows支持开发中)
-- 网络连接 (仅云端服务需要)
-- **本地whisper.cpp** (使用本地转录功能时需要)
+- macOS（Linux 版在 [`linux` 分支](https://github.com/Mor-Li/Whisper-Input-Next/tree/linux)）
+- [uv](https://docs.astral.sh/uv/)（会自动装好 Python 3.12 和依赖）和 `tmux`
+- 网络连接（仅云端服务需要）
+- **本地whisper.cpp**（只有用 Ctrl+I 本地转录时才需要）
 
 ### 安装步骤
 
@@ -73,7 +81,7 @@ cd Whisper-Input-Next
 uv sync
 ```
 
-3. **安装本地whisper.cpp4. **安装本地whisper.cpp (可选，使用本地转录时需要)**
+3. **安装本地whisper.cpp (可选，使用本地转录时需要)**
 ```bash
 # 克隆whisper.cpp仓库
 git clone https://github.com/ggerganov/whisper.cpp.git
@@ -201,7 +209,7 @@ alias whisper_input_off='tmux kill-session -t Whisper-Input-Next'
 
 菜单栏图标显示当前状态：空闲、录音中、转录中。警告和错误会在那里显示两秒。豆包模式下，说话时有一个浮动小窗实时预览文字，停止后最终文本才粘贴到光标处。OpenAI 转录失败时会用已保存的录音自动重试。
 
-点一下菜单栏图标可以看使用统计：今天、最近 7 天、最近 30 天各转了多少条，累计条数和字数，最近 30 天每天条数的柱状图，最下面是「退出」。数字来自转录缓存 `audio_archive/cache.json`。
+点一下菜单栏图标可以看使用统计：今天、最近 7 天、最近 30 天各转了多少条，累计条数和字数，还有从第一条录音起每天条数的柱状图。图打开时停在今天，左右滑动可以往回看，鼠标停在柱子上显示那天的日期和条数。最下面是「退出」。数字来自转录缓存 `audio_archive/cache.json`。
 
 ## 📚 功能文档
 
@@ -223,6 +231,7 @@ alias whisper_input_off='tmux kill-session -t Whisper-Input-Next'
 - [📋 版本控制文档](./[V3.1.0]_VERSION_CONTROL.md) - *v3.1.0建立*
 - [📝 v3.1.0 更新说明](./[V3.1.0]_RELEASE_NOTES.md)
 - [✍️ 为什么做这个项目（知乎）](./[V3.0.0]_知乎blog.md)
+- [🧰 维护说明：目录结构、启动方式、踩过的坑](../AGENTS.md)
 
 **已废弃**
 
@@ -231,13 +240,14 @@ alias whisper_input_off='tmux kill-session -t Whisper-Input-Next'
 ## 🛠️ 开发状态
 
 ### ✅ 已完成功能
+- [x] 卡死自动重启和开机自启 *(v3.4.0)*
+- [x] 菜单栏使用统计和可滑动的每日柱状图 *(v3.4.0)*
+- [x] 豆包流式识别、二次识别和浮动预览窗 *(v3.2.0 / v3.3.0)*
 - [x] OpenAI GPT-4o transcribe集成 (180秒超时)
 - [x] 双处理器架构 (云端+本地)
 - [x] 音频存档系统 + 转录缓存(cache.json)
 - [x] 智能重试机制 (多次失败循环重试)
 - [x] 菜单栏状态图标
-- [x] 豆包流式识别和浮动预览窗
-- [x] 卡死自动重启和开机自启
 - [x] 本地whisper.cpp支持
 - [x] 项目文档完善
 
@@ -283,7 +293,9 @@ uv sync                 # 按 pyproject.toml / uv.lock 建 .venv
 ## 🙏 致谢
 
 - 感谢 [ErlichLiu](https://github.com/ErlichLiu) 提供的原始项目基础
+- 感谢 [字节跳动 / 火山引擎](https://www.volcengine.com/) 提供的豆包 Seed ASR 2.0 流式识别接口
 - 感谢 OpenAI 提供的强大转录服务
+- 感谢 [whisper.cpp](https://github.com/ggerganov/whisper.cpp) 社区提供的本地转录支持
 - 感谢所有贡献者和用户的支持
 
 ## 📞 联系方式
@@ -291,6 +303,26 @@ uv sync                 # 按 pyproject.toml / uv.lock 建 .venv
 - **项目地址**: https://github.com/Mor-Li/Whisper-Input-Next  
 - **问题报告**: [Issues](https://github.com/Mor-Li/Whisper-Input-Next/issues)
 - **功能建议**: [Discussions](https://github.com/Mor-Li/Whisper-Input-Next/discussions)
+
+## 📋 更新日志
+
+### v3.4.0（2026-11-19）
+- **修好"一直转圈"的卡死**：macOS CoreAudio 在关闭麦克风时卡住后，程序会自己重启，不再停在那里
+- **守护循环和开机自启**：`start.sh` 用重启循环运行程序，`scripts/install_autostart.sh` 安装 LaunchAgent
+- **菜单栏使用统计**：每天条数、累计条数和字数，柱状图可以一路往回滑到第一条录音
+- **菜单终于点得开了**：程序改跑完整的应用事件循环，菜单（包括退出）能正常弹出。图标也有了自己固定的位置，不再和别的 Python 菜单栏小工具抢位置
+- **清理**：删掉了走不到的功能（翻译模式、Kimi 润色、GROQ 和 SiliconFlow、加标点、PyQt 控制面板），旧代码保留在 git 标签 `pre-cleanup-2026-11` 上
+- 依赖改用 `pyproject.toml` 加 `uv.lock` 管理
+
+### v3.3.0（2026-03-11）
+- **二次识别**：说话停顿时用非流式模型对整句重新识别，准确率明显提升
+- **延迟上屏**：录音时文字只在浮动预览窗里显示，停止后才一次性粘贴，让识别能用上完整上下文
+- **DJI 无线麦克风**：自动识别并优先使用
+
+### v3.2.0（2025-07-27）
+- **豆包流式识别**：基于字节跳动 Seed ASR 2.0，边说边出字
+- **浮动预览窗**：在输入框附近实时显示待上屏文字
+- **自动切换音频设备**：按优先级选择麦克风
 
 ---
 

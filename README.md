@@ -6,10 +6,10 @@
 
 <p align="center">
   <a href="./docs/[V3.1.0]_VERSION_CONTROL.md">
-    <img src="https://img.shields.io/badge/version-3.3.1-blue.svg" alt="Version" />
+    <img src="https://img.shields.io/badge/version-3.4.0-blue.svg" alt="Version" />
   </a>
   <a href="https://www.python.org/">
-    <img src="https://img.shields.io/badge/python-3.12+-green.svg" alt="Python" />
+    <img src="https://img.shields.io/badge/python-3.12-green.svg" alt="Python" />
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" />
@@ -29,6 +29,8 @@ An intelligent voice-to-text tool that turns your speech into text in **any inpu
 - **💸 No middleman, ever** — You pay the source vendors' APIs directly (Doubao / OpenAI), at cost. Top up a few bucks and it lasts for months. We take **$0** — no subscription, no markup, nobody skimming in the middle.
 - **🎯 Two-pass recognition** — During speech pauses a higher-accuracy non-streaming model re-recognizes each sentence, noticeably improving quality (e.g. "广告位" → "光标位置").
 - **🔌 Your choice of engine** — Doubao Streaming ASR (default, super cheap), OpenAI GPT-4o transcribe, or fully offline local whisper.cpp.
+- **🔁 Always there** — Starts at login and restarts itself if it ever crashes or the microphone gets stuck. No terminal babysitting.
+- **📊 See your own usage** — Click the menu bar icon for today's count, all-time totals, and a scrollable day-by-day chart back to your very first recording.
 
 > 🐧 **Linux users:** Linux desktop support lives on the [`linux` branch](https://github.com/Mor-Li/Whisper-Input-Next/tree/linux), kindly contributed and maintained by [@MiaoDX](https://github.com/MiaoDX) — many thanks! I'm on macOS and don't personally test/maintain the branch, so it may lag behind `main`. Track or contribute there.
 
@@ -47,7 +49,13 @@ This project is based on [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/
 
 ## ✨ Key Features
 
-### 🔥 NEW in v3.3.0: Two-Pass Recognition & Accuracy Boost
+### 🔥 NEW in v3.4.0: Self-Healing, Start at Login & Usage Stats
+- **No more "spinning forever"**: macOS CoreAudio occasionally never returns when the microphone stream is stopped, which used to leave the app stuck until restarted by hand. The app now detects this, finishes any in-flight transcription, and restarts itself within seconds
+- **Start at login**: `./scripts/install_autostart.sh` installs a LaunchAgent, and `start.sh` runs the app under a restart loop
+- **Usage stats menu**: click the menu bar icon for counts today / last 7 days / last 30 days / all time, and a bar chart you can scroll back day by day. Hover a bar to see its date and count
+- **Leaner codebase**: unreachable features removed, dependencies managed with uv
+
+### v3.3.0: Two-Pass Recognition & Accuracy Boost
 - **Two-Pass Recognition**: Enables `enable_nonstream` for sentence-level re-recognition using the higher-accuracy nostream model during speech pauses, significantly improving transcription quality
 - **Deferred Text Output**: All text stays in floating preview during recording; final text is pasted only after recording stops, allowing full ASR context optimization
 - **DJI Wireless Mic Support**: Auto-detects and prioritizes DJI Wireless Microphone as input device
@@ -62,28 +70,27 @@ This project is based on [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/
 - **Multi-platform Transcription Services**: Doubao Streaming ASR (default), OpenAI GPT-4o transcribe, local whisper.cpp
 - **Smart Hotkeys**: Ctrl+F (Doubao streaming, default) / Ctrl+I (local cost-saving mode)
 - **Audio Archive**: Automatically save all recordings, support history playback
-- **Failure Retry**: Intelligent error handling and retry mechanism
+- **Automatic Retry**: Failed OpenAI transcriptions are retried from the saved audio
 
 ### 🔧 Technical Features
 - **Dual Processor Architecture**: Streaming + Batch processors working simultaneously
-- **180s Long Audio Support**: Support up to 3 minutes of continuous recording
-- **Smart Status Indicators**: Simple numeric status display (0, 1, !)
+- **Long Recordings**: Up to 10 minutes per recording
+- **Menu Bar Status**: The icon shows idle / recording / transcribing, and the menu shows usage stats
+- **Self-Healing**: A supervisor loop restarts the app after a crash or a stuck microphone
 - **Cache System**: Audio archive with transcription result caching
 - **Cursor-safe hotkeys** *(macOS)*: The recording hotkey is intercepted at the Quartz event-tap layer so toggling never nudges your text caret (`Ctrl+F`/`Ctrl+I` no longer trigger the built-in forward-char/Tab), enabling precise mid-text insertion — adapts automatically to whatever hotkey you configure. [Details](./docs/HOTKEY_CURSOR_FIX.md)
 
 ### 🌟 User Experience
-- **No Clipboard Pollution**: Clean status display without interfering with system clipboard
-- **One-click Retry**: Failed transcriptions can be retried without re-recording
-- **Real-time Input**: Transcription results appear directly at cursor position
+- **Real-time Input**: Transcription results are pasted directly at the cursor position
 - **Privacy Protection**: Local processing option, data not uploaded
 
 ## 📦 Quick Start
 
 ### Environment Requirements
-- Python 3.12+
-- macOS/Linux (Windows support in development)
+- macOS (Linux lives on the [`linux` branch](https://github.com/Mor-Li/Whisper-Input-Next/tree/linux))
+- [uv](https://docs.astral.sh/uv/) (installs Python 3.12 and the dependencies) and `tmux`
 - Network connection (only required for cloud services)
-- **Local whisper.cpp** (required when using local transcription features)
+- **Local whisper.cpp** (only for local transcription with Ctrl+I)
 
 ### Installation Steps
 
@@ -98,7 +105,7 @@ cd Whisper-Input-Next
 uv sync
 ```
 
-3. **Install Local whisper.cpp4. **Install Local whisper.cpp (Optional, required for local transcription)**
+3. **Install Local whisper.cpp (Optional, required for local transcription)**
 ```bash
 # Clone whisper.cpp repository
 git clone https://github.com/ggerganov/whisper.cpp.git
@@ -241,7 +248,7 @@ Replace `/path/to/Whisper-Input-Next` with your actual project path.
 
 The menu bar icon shows the current state: idle, recording, or transcribing. Warnings and errors show there for two seconds. In Doubao mode a floating window previews the text while you speak. The final text is pasted at the cursor after you stop. Failed OpenAI transcriptions are retried automatically from the saved audio.
 
-Click the menu bar icon to see usage: transcriptions today, in the last 7 and 30 days, all-time totals, a bar chart of the last 30 days, and a Quit item. The numbers come from the transcription cache `audio_archive/cache.json`.
+Click the menu bar icon to see usage: transcriptions today, in the last 7 and 30 days, all-time totals, and a bar chart of every day since your first recording. The chart opens on today. Swipe or scroll to go back in time, and hover a bar to see its date and count. The menu also has a Quit item. The numbers come from the transcription cache `audio_archive/cache.json`.
 
 ## 📚 Feature Documentation
 
@@ -263,6 +270,7 @@ Click the menu bar icon to see usage: transcriptions today, in the last 7 and 30
 - [📋 Version Control Documentation](./docs/[V3.1.0]_VERSION_CONTROL.md) - *v3.1.0*
 - [📝 Release Notes v3.1.0](./docs/[V3.1.0]_RELEASE_NOTES.md)
 - [✍️ Why This Project (Chinese blog post)](./docs/[V3.0.0]_知乎blog.md)
+- [🧰 Maintainer notes (Chinese): layout, startup, known pitfalls](./AGENTS.md)
 
 **Deprecated**
 
@@ -271,9 +279,12 @@ Click the menu bar icon to see usage: transcriptions today, in the last 7 and 30
 ## 🛠️ Development Status
 
 ### ✅ Completed Features
-- [x] **Two-pass recognition for higher accuracy** *(NEW in v3.3.0)*
-- [x] **Deferred text output with full-context optimization** *(NEW in v3.3.0)*
-- [x] **DJI Wireless Mic auto-detection** *(NEW in v3.3.0)*
+- [x] **Self-healing restart after a stuck microphone** *(NEW in v3.4.0)*
+- [x] **Start at login** *(NEW in v3.4.0)*
+- [x] **Usage stats menu with scrollable history chart** *(NEW in v3.4.0)*
+- [x] **Two-pass recognition for higher accuracy** *(v3.3.0)*
+- [x] **Deferred text output with full-context optimization** *(v3.3.0)*
+- [x] **DJI Wireless Mic auto-detection** *(v3.3.0)*
 - [x] **Doubao Streaming ASR integration** *(v3.2.0)*
 - [x] **Floating preview window for real-time feedback** *(v3.2.0)*
 - [x] OpenAI GPT-4o transcribe integration
@@ -342,7 +353,8 @@ uv sync                 # creates .venv from pyproject.toml / uv.lock
 - **Fix the "spinning forever" freeze**: when macOS CoreAudio hangs while stopping the microphone, the app now restarts itself instead of staying stuck
 - **Supervisor and start at login**: `start.sh` runs the app under a restart loop, `scripts/install_autostart.sh` installs a LaunchAgent
 - **Cleanup**: removed unreachable features (translation mode, Kimi polish, GROQ/SiliconFlow, punctuation post-processing, PyQt control panel). They remain available at git tag `pre-cleanup-2026-11`
-- **Usage stats in the menu bar**: click the icon to see daily transcription counts and a 30-day bar chart
+- **Usage stats in the menu bar**: click the icon for daily counts and a bar chart that scrolls back through the full history
+- **Clickable menu bar menu**: the app now runs a full NSApplication event loop, so the menu (including Quit) actually opens, and the icon keeps its own position instead of sharing it with other Python menu bar tools
 - Dependencies moved to `pyproject.toml` + `uv.lock`
 
 ### v3.3.0 (2026-03-11)
