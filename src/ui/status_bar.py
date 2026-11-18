@@ -26,7 +26,6 @@ from src.ui.usage_chart import CHART_HEIGHT, CHART_WIDTH, DailyBarChartView
 
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 _CACHE_PATH = os.path.join(_REPO_ROOT, "audio_archive", "cache.json")
-CHART_DAYS = 30
 
 # 菜单栏图标的固定名字。macOS 按「进程名 + 这个名字」记住图标位置，
 # 不设的话默认叫 Item-0，会和别的 python 菜单栏小工具（比如 llm-spend）抢同一条位置记录。
@@ -189,7 +188,9 @@ class StatusBarController:
         else:
             self._stat_items["since"].setTitle_("还没有转录记录")
 
-        self._chart.set_series(stats.series(CHART_DAYS, today) if stats.total_count else [])
+        # 柱状图从第一天一直画到今天，可以左右滑动
+        days = (today - first).days + 1 if first else 0
+        self._chart.set_series(stats.series(days, today) if days > 0 else [])
 
         visual = _STATE_VISUALS.get(self._current_state, _STATE_VISUALS[InputState.IDLE])
         state_text = f"状态：{visual.description}"
