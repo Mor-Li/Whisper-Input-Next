@@ -8,7 +8,7 @@ import subprocess
 from ..utils.logger import logger
 import time
 import threading
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Callable, Optional
 
 # 允许的设备关键字（按优先级从高到低）
 # 只允许这些设备，其他设备不使用
@@ -26,7 +26,14 @@ ALLOWED_DEVICE_KEYWORDS = [
 ]
 
 
+class AudioSystemWedged(RuntimeError):
+    """本进程里的 CoreAudio 已卡死，只有重启进程才能恢复。"""
+
+
 class AudioRecorder:
+    # 开流 / 关流的限时（秒）。超时就认定 CoreAudio 卡死。
+    STREAM_OP_TIMEOUT = 5.0
+
     # 从派发关流任务前一直保护到 close() 完成，而不只是 stop() 超时之后。
     # 同一把锁也保护设备刷新，避免检查通过后才有关流任务开始。
     _pending_closures = 0
@@ -37,7 +44,6 @@ class AudioRecorder:
         self.audio_queue = queue.Queue()
         self._recorded_chunks = []
         self.sample_rate = 16000
-        # self.temp_dir = tempfile.mkdtemp()
         self.current_device = None
         self.record_start_time = None
         self.min_record_duration = 1.0  # 最小录音时长（秒）
@@ -45,13 +51,44 @@ class AudioRecorder:
         self.auto_stop_timer = None  # 自动停止定时器
         self.auto_stop_callback = None  # 自动停止时的回调函数
         self.device_disconnect_callback = None  # 设备断开时的回调函数
+        self.wedged_callback: Optional[Callable[[str], None]] = None  # CoreAudio 卡死时的回调
+        self.wedged_reason: Optional[str] = None  # 非 None 表示本进程音频已不可用
         self.stream = None
+        # 开流全程持有这把锁，停止录音要等开流结束（最多 STREAM_OP_TIMEOUT 秒），
+        # 这样"开流还没完成就按了停止"时不会漏关刚开出来的流。
         self._recording_lock = threading.RLock()
         self._device_error_detected = False  # 标记是否检测到设备错误
         self._last_used_device = None  # 上次录音使用的设备（用于判断是否切换）
         self._check_audio_devices()
-        # logger.info(f"初始化完成，临时文件目录: {self.temp_dir}")
         logger.info(f"初始化完成，最大录音时长: {self.max_record_duration/60:.1f}分钟")
+
+    # ------------------------------------------------------------------
+    # CoreAudio 卡死检测
+    # ------------------------------------------------------------------
+
+    def set_wedged_callback(self, callback: Callable[[str], None]):
+        """设置 CoreAudio 卡死时的回调（由主程序决定怎么重启）。"""
+        self.wedged_callback = callback
+
+    def _mark_wedged(self, reason: str):
+        """记录 CoreAudio 已卡死，并通知主程序。只通知一次。
+
+        stream.stop() 或开流卡在 CoreAudio 内部后，这个进程里再开新流也会跟着卡死，
+        历次日志里没有一次自己恢复过。唯一可靠的出路是重启进程。
+        """
+        if self.wedged_reason is not None:
+            return
+        self.wedged_reason = reason
+        logger.error(f"🧊 CoreAudio 卡死: {reason}。本进程无法再录音，需要重启进程")
+        if self.wedged_callback:
+            try:
+                self.wedged_callback(reason)
+            except Exception:
+                logger.exception("CoreAudio 卡死回调执行失败")
+
+    # ------------------------------------------------------------------
+    # 录音数据
+    # ------------------------------------------------------------------
 
     def _drain_audio_queue(self):
         """清空音频队列，避免旧音频污染下一次录音。"""
@@ -69,15 +106,6 @@ class AudioRecorder:
         self._recorded_chunks.append(chunk)
         if stream_to_queue:
             self.audio_queue.put(chunk)
-
-    def _start_capture_session(self, *, clear_queue: bool):
-        with self._recording_lock:
-            self.recording = True
-            self.record_start_time = time.time()
-            self._device_error_detected = False
-            self._reset_recorded_audio()
-            if clear_queue:
-                self._drain_audio_queue()
 
     def _build_audio_buffer(self):
         if not self._recorded_chunks:
@@ -100,6 +128,44 @@ class AudioRecorder:
             logger.info("✅ 已取消自动停止定时器")
         self.auto_stop_timer = None
 
+    # ------------------------------------------------------------------
+    # 开流 / 关流
+    # ------------------------------------------------------------------
+
+    def _open_input_stream(self, device_idx, callback):
+        """在辅助线程里开流并限时。
+
+        CoreAudio 卡死后，sd.InputStream() / stream.start() 会永久阻塞。
+        直接在按键线程里调用的话，界面会停在"录音中"，再按一次就停在"处理中"一直转圈。
+        这里限时等待，超时就把卡死上报给主程序，由它重启进程。
+        """
+        result = {}
+
+        def _worker():
+            try:
+                stream = sd.InputStream(
+                    channels=1,
+                    samplerate=self.sample_rate,
+                    callback=callback,
+                    device=device_idx,
+                    latency='low',
+                )
+                stream.start()
+                result["stream"] = stream
+            except Exception as exc:  # noqa: BLE001
+                result["error"] = exc
+
+        worker = threading.Thread(target=_worker, name="pa-open", daemon=True)
+        worker.start()
+        worker.join(self.STREAM_OP_TIMEOUT)
+        if worker.is_alive():
+            reason = f"开启音频流 {self.STREAM_OP_TIMEOUT:.0f}s 未返回"
+            self._mark_wedged(reason)
+            raise AudioSystemWedged(reason)
+        if "error" in result:
+            raise result["error"]
+        return result["stream"]
+
     def _close_stream_async(self, stream):
         """Fire-and-forget 关闭一个 PortAudio stream。
 
@@ -117,15 +183,13 @@ class AudioRecorder:
         def _close_worker():
             inner = threading.Thread(target=stream.stop, name="pa-stop-inner", daemon=True)
             inner.start()
-            inner.join(timeout=5.0)
+            inner.join(timeout=self.STREAM_OP_TIMEOUT)
             if inner.is_alive():
                 # stop() 仍在 PortAudio/CoreAudio 内部执行。此刻并发调用 abort()/close()，
-                # 或在别处调用 Pa_Terminate()，都会和它抢同一把 CoreAudio 递归锁，
-                # 把整个音频客户端锁死（表现为之后按热键再也起不了新流）。
-                # 等它自己返回；关流任务从派发前就已阻止设备刷新。
-                logger.warning(
-                    "⚠️ stream.stop() 5s 未返回，转入后台等待（期间跳过设备列表刷新以避免 CoreAudio 死锁）"
-                )
+                # 或在别处调用 Pa_Terminate()，都会和它抢同一把 CoreAudio 递归锁。
+                # 实际日志里它从没自己返回过，之后再开流也会卡死，所以上报卡死、
+                # 让主程序重启进程。这里继续等，万一它返回了就照常收尾。
+                self._mark_wedged(f"stream.stop() {self.STREAM_OP_TIMEOUT:.0f}s 未返回")
                 inner.join()
                 logger.info("✅ 此前卡住的 stream.stop() 已返回，继续正常关闭")
             try:
@@ -143,6 +207,251 @@ class AudioRecorder:
             # 任务未能派发，流同样没有关闭，保留保护并让调用者处理错误。
             logger.exception("无法启动音频关流线程，继续跳过设备列表刷新")
             raise
+
+    # ------------------------------------------------------------------
+    # 设备选择
+    # ------------------------------------------------------------------
+
+    def _list_audio_devices(self):
+        """列出所有可用的音频输入设备"""
+        devices = sd.query_devices()
+        logger.info("\n=== 可用的音频输入设备 ===")
+        for i, device in enumerate(devices):
+            if device['max_input_channels'] > 0:  # 只显示输入设备
+                status = "默认设备 ✓" if device['name'] == self.current_device else ""
+                logger.info(f"{i}: {device['name']} "
+                          f"(采样率: {int(device['default_samplerate'])}Hz, "
+                          f"通道数: {device['max_input_channels']}) {status}")
+        logger.info("========================\n")
+
+    def _check_audio_devices(self):
+        """检查音频设备状态，使用白名单选择最佳设备"""
+        try:
+            device_idx, best_device = self._get_best_input_device()
+
+            if best_device is not None:
+                self.current_device = best_device['name']
+                self.sample_rate = int(best_device['default_samplerate'])
+            else:
+                # 没有白名单设备，使用系统默认
+                default_input = sd.query_devices(kind='input')
+                self.current_device = default_input['name']
+                self.sample_rate = int(default_input['default_samplerate'])
+
+            logger.info("\n=== 当前音频设备信息 ===")
+            logger.info(f"选择的输入设备: {self.current_device}")
+            logger.info(f"支持的采样率: {self.sample_rate}Hz")
+            logger.info("========================\n")
+
+            self._list_audio_devices()
+
+        except Exception as e:
+            logger.error(f"检查音频设备时出错: {e}")
+            raise RuntimeError("无法访问音频设备，请检查系统权限设置")
+
+    def _get_best_input_device(self):
+        """根据优先级选择最佳输入设备（只从白名单中选择）
+
+        Returns:
+            tuple: (device_index, device_info) 或 (None, None) 如果没有可用设备
+        """
+        try:
+            # 刷新设备列表（检测新插入的设备）。
+            # sd._terminate() 会调用 Pa_Terminate()，它要收拾所有仍打开的流。一旦有流
+            # 卡在 stop() 里，这里就会永久阻塞。存在未收尾的流时跳过本次刷新——
+            # 代价只是可能认不出新插进来的麦克风。所有关流任务完成后自动恢复。
+            # 检查和刷新必须持同一把锁，避免检查时没有关流任务、真正刷新时却已开始 stop()/close()。
+            with AudioRecorder._stream_lifecycle_lock:
+                if AudioRecorder._pending_closures:
+                    logger.warning("⚠️ 存在尚未收尾的音频流，跳过设备列表刷新以避免 Pa_Terminate() 死锁")
+                else:
+                    sd._terminate()
+                    sd._initialize()
+
+            devices = sd.query_devices()
+            input_devices = [(i, d) for i, d in enumerate(devices) if d['max_input_channels'] > 0]
+
+            # 按优先级从高到低匹配白名单设备
+            for keyword in ALLOWED_DEVICE_KEYWORDS:
+                for idx, device in input_devices:
+                    if keyword.lower() in device['name'].lower():
+                        logger.debug(f"找到匹配设备: {device['name']} (优先级关键字: {keyword})")
+                        return idx, device
+
+            logger.warning("没有找到白名单中的可用设备")
+            return None, None
+        except Exception as e:
+            logger.error(f"选择最佳设备时出错: {e}")
+            return None, None
+
+    # ------------------------------------------------------------------
+    # 回调与通知
+    # ------------------------------------------------------------------
+
+    def _auto_stop_recording(self):
+        """自动停止录音（达到最大时长）"""
+        logger.warning(f"⏰ 录音已达到最大时长（{self.max_record_duration/60:.1f}分钟），自动中止录音")
+
+        if self.auto_stop_callback:
+            self.auto_stop_callback()
+        else:
+            self.stop_recording(abort=True)
+
+    def set_auto_stop_callback(self, callback):
+        """设置自动停止时的回调函数"""
+        self.auto_stop_callback = callback
+
+    def set_device_disconnect_callback(self, callback):
+        """设置设备断开时的回调函数"""
+        self.device_disconnect_callback = callback
+
+    def _handle_device_disconnect(self):
+        """处理录音过程中设备断开"""
+        if not self.recording:
+            return
+
+        logger.warning("录音过程中检测到设备断开，保存已录内容")
+
+        self._send_notification(
+            title="音频设备已断开",
+            message="录音已停止，正在转录已录制内容",
+            subtitle="设备断开"
+        )
+
+        # 在新线程中调用回调，避免阻塞音频回调
+        if self.device_disconnect_callback:
+            threading.Thread(target=self.device_disconnect_callback, daemon=True).start()
+
+    def _send_notification(self, title, message, subtitle=""):
+        """发送 macOS 系统通知。失败不影响主流程。"""
+        try:
+            script = f'display notification "{message}" with title "{title}"'
+            if subtitle:
+                script += f' subtitle "{subtitle}"'
+            subprocess.run(
+                ["osascript", "-e", script],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+        except Exception as e:
+            logger.debug(f"发送系统通知失败: {e}")
+
+    # ------------------------------------------------------------------
+    # 开始 / 停止录音
+    # ------------------------------------------------------------------
+
+    def _start_capture(self, *, stream_to_queue: bool):
+        """选设备、开流、启动定时器。失败时抛异常，调用方负责转换成各自的返回约定。
+
+        Args:
+            stream_to_queue: True 表示流式录音，音频块同时送进 audio_queue 给豆包。
+        """
+        if self.wedged_reason is not None:
+            raise AudioSystemWedged(f"音频系统已卡死（{self.wedged_reason}），等待进程自动重启")
+
+        with self._recording_lock:
+            device_idx, best_device = self._get_best_input_device()
+            if best_device is None:
+                self._send_notification(
+                    title="无可用音频设备",
+                    message="请连接麦克风",
+                    subtitle="录音失败"
+                )
+                raise RuntimeError("没有可用的音频输入设备")
+
+            new_device_name = best_device['name']
+            device_switched = (self._last_used_device is not None and
+                               self._last_used_device != new_device_name)
+            first_recording = self._last_used_device is None
+
+            self.current_device = new_device_name
+            self.sample_rate = int(best_device['default_samplerate'])
+            self._last_used_device = new_device_name
+
+            logger.info("开始流式录音..." if stream_to_queue else "开始录音...")
+            self.recording = True
+            self.record_start_time = time.time()
+            self._device_error_detected = False
+            self._reset_recorded_audio()
+            self._drain_audio_queue()
+
+            # 只有在设备切换或第一次录音时才发送通知
+            if device_switched:
+                self._send_notification(title="音频设备已切换", message=f"使用: {self.current_device}")
+            elif first_recording:
+                self._send_notification(title="开始录音", message=f"使用: {self.current_device}")
+
+            def audio_callback(indata, frames, time_info, status):
+                if status:
+                    status_str = str(status).lower()
+                    logger.warning(f"音频录制状态: {status}")
+                    # 检测设备断开错误（排除普通的 overflow）
+                    if ("input" in status_str or "device" in status_str) and "overflow" not in status_str:
+                        if not self._device_error_detected:
+                            self._device_error_detected = True
+                            self._handle_device_disconnect()
+                        return
+                if self.recording:
+                    self._capture_audio_chunk(indata, stream_to_queue=stream_to_queue)
+
+            try:
+                self.stream = self._open_input_stream(device_idx, audio_callback)
+            except Exception:
+                self.recording = False
+                self.record_start_time = None
+                raise
+            logger.info(f"{'流式' if stream_to_queue else ''}音频流已启动 (设备: {self.current_device})")
+
+            self.auto_stop_timer = threading.Timer(self.max_record_duration, self._auto_stop_recording)
+            self.auto_stop_timer.daemon = True
+            self.auto_stop_timer.start()
+
+    def _notify_start_failure(self, exc: Exception):
+        logger.error(f"启动录音失败: {exc}")
+        if isinstance(exc, AudioSystemWedged):
+            # 主程序会发"正在自动重启"的通知，这里不重复打扰
+            return
+        self._send_notification(
+            title="⚠️ 音频设备错误",
+            message="麦克风可能已断开，请检查设备连接",
+            subtitle="录音启动失败"
+        )
+
+    def start_recording(self):
+        """开始录音（批量转录用）。失败时抛异常。"""
+        if self.recording:
+            return
+        try:
+            self._start_capture(stream_to_queue=False)
+        except Exception as exc:
+            self._notify_start_failure(exc)
+            raise
+
+    def start_streaming_recording(self) -> Optional[str]:
+        """开始流式录音（豆包流式转录用）。
+
+        Returns:
+            None 表示成功，字符串是错误信息。
+        """
+        if self.recording:
+            # 检查流是否真的还活着，如果流已死则是残留状态（如扣盖恢复后）
+            if self.stream:
+                try:
+                    if self.stream.active:
+                        return "已经在录音中"
+                except Exception:
+                    pass
+            logger.warning("♻️ 检测到残留的录音状态（流已失效），自动清理...")
+            self.reset_streaming_state(reason="流已失效，自动清理")
+
+        try:
+            self._start_capture(stream_to_queue=True)
+        except Exception as exc:
+            self._notify_start_failure(exc)
+            return str(exc)
+        return None
 
     def _finalize_recording(self, abort=False, *, enforce_min_duration=True, clear_queue=True):
         with self._recording_lock:
@@ -183,6 +492,18 @@ class AudioRecorder:
             self._drain_audio_queue()
         return audio_buffer
 
+    def stop_recording(self, abort=False):
+        """停止录音并返回音频数据（BytesIO / "TOO_SHORT" / None）
+
+        Args:
+            abort: 是否放弃录音（不返回音频数据）
+        """
+        return self._finalize_recording(abort, enforce_min_duration=True, clear_queue=True)
+
+    def stop_streaming_recording(self, abort=False):
+        """停止流式录音。不清空队列，让流式生成器把剩余音频发完。"""
+        return self._finalize_recording(abort, enforce_min_duration=False, clear_queue=False)
+
     def reset_streaming_state(self, reason: str = "", drain_queue: bool = True):
         """强制清理流式录音状态，用于异常恢复。"""
         if reason:
@@ -200,262 +521,10 @@ class AudioRecorder:
                 self._drain_audio_queue()
 
         self._close_stream_async(stream_to_close)
-    
-    def _list_audio_devices(self):
-        """列出所有可用的音频输入设备"""
-        devices = sd.query_devices()
-        logger.info("\n=== 可用的音频输入设备 ===")
-        for i, device in enumerate(devices):
-            if device['max_input_channels'] > 0:  # 只显示输入设备
-                status = "默认设备 ✓" if device['name'] == self.current_device else ""
-                logger.info(f"{i}: {device['name']} "
-                          f"(采样率: {int(device['default_samplerate'])}Hz, "
-                          f"通道数: {device['max_input_channels']}) {status}")
-        logger.info("========================\n")
-    
-    def _check_audio_devices(self):
-        """检查音频设备状态，使用白名单选择最佳设备"""
-        try:
-            # 使用白名单选择最佳设备
-            device_idx, best_device = self._get_best_input_device()
 
-            if best_device is not None:
-                self.current_device = best_device['name']
-                self.sample_rate = int(best_device['default_samplerate'])
-            else:
-                # 没有白名单设备，使用系统默认
-                default_input = sd.query_devices(kind='input')
-                self.current_device = default_input['name']
-                self.sample_rate = int(default_input['default_samplerate'])
-
-            logger.info("\n=== 当前音频设备信息 ===")
-            logger.info(f"选择的输入设备: {self.current_device}")
-            logger.info(f"支持的采样率: {self.sample_rate}Hz")
-            logger.info("========================\n")
-
-            # 列出所有可用设备
-            self._list_audio_devices()
-
-        except Exception as e:
-            logger.error(f"检查音频设备时出错: {e}")
-            raise RuntimeError("无法访问音频设备，请检查系统权限设置")
-    
-    def _check_device_changed(self):
-        """检查默认音频设备是否发生变化"""
-        try:
-            default_input = sd.query_devices(kind='input')
-            if default_input['name'] != self.current_device:
-                logger.warning(f"\n音频设备已切换:")
-                logger.warning(f"从: {self.current_device}")
-                logger.warning(f"到: {default_input['name']}\n")
-                self.current_device = default_input['name']
-                self._check_audio_devices()
-                return True
-            return False
-        except Exception as e:
-            logger.error(f"检查设备变化时出错: {e}")
-            return False
-
-    def _get_best_input_device(self):
-        """根据优先级选择最佳输入设备（只从白名单中选择）
-
-        Returns:
-            tuple: (device_index, device_info) 或 (None, None) 如果没有可用设备
-        """
-        try:
-            # 刷新设备列表（检测新插入的设备）。
-            # sd._terminate() 会调用 Pa_Terminate()，它要收拾所有仍打开的流；一旦有流
-            # 卡在 stop() 里，这里就会永久阻塞，热键从此彻底失灵。存在卡住的流时跳过
-            # 本次刷新——代价只是可能认不出新插进来的麦克风，远好过整个进程锁死。
-            # 所有关流任务完成后自动恢复。检查和刷新必须持同一把锁，
-            # 避免检查时没有关流任务、真正刷新时却已开始 stop()/close()。
-            with AudioRecorder._stream_lifecycle_lock:
-                if AudioRecorder._pending_closures:
-                    logger.warning("⚠️ 存在尚未收尾的音频流，跳过设备列表刷新以避免 Pa_Terminate() 死锁")
-                else:
-                    sd._terminate()
-                    sd._initialize()
-
-            devices = sd.query_devices()
-            input_devices = [(i, d) for i, d in enumerate(devices) if d['max_input_channels'] > 0]
-
-            # 按优先级从高到低匹配白名单设备
-            for keyword in ALLOWED_DEVICE_KEYWORDS:
-                for idx, device in input_devices:
-                    if keyword.lower() in device['name'].lower():
-                        logger.debug(f"找到匹配设备: {device['name']} (优先级关键字: {keyword})")
-                        return idx, device
-
-            # 没有找到白名单设备
-            logger.warning("没有找到白名单中的可用设备")
-            return None, None
-        except Exception as e:
-            logger.error(f"选择最佳设备时出错: {e}")
-            return None, None
-    
-    def _auto_stop_recording(self):
-        """自动停止录音（达到最大时长）"""
-        logger.warning(f"⏰ 录音已达到最大时长（{self.max_record_duration/60:.1f}分钟），自动中止录音")
-        
-        # 如果有自动停止回调，则调用它
-        if self.auto_stop_callback:
-            self.auto_stop_callback()
-        else:
-            # 否则直接中止录音（abort=True）
-            self.stop_recording(abort=True)
-    
-    def set_auto_stop_callback(self, callback):
-        """设置自动停止时的回调函数"""
-        self.auto_stop_callback = callback
-
-    def set_device_disconnect_callback(self, callback):
-        """设置设备断开时的回调函数"""
-        self.device_disconnect_callback = callback
-
-    def _handle_device_disconnect(self):
-        """处理录音过程中设备断开"""
-        if not self.recording:
-            return
-
-        logger.warning("录音过程中检测到设备断开，保存已录内容")
-
-        # 发送系统通知
-        self._send_notification(
-            title="音频设备已断开",
-            message="录音已停止，正在转录已录制内容",
-            subtitle="设备断开"
-        )
-
-        # 触发回调（会调用 VoiceAssistant 的停止录音方法）
-        if self.device_disconnect_callback:
-            # 在新线程中调用回调，避免阻塞音频回调
-            threading.Thread(target=self.device_disconnect_callback, daemon=True).start()
-
-    def _send_notification(self, title, message, subtitle=""):
-        """
-        发送 macOS 系统通知
-
-        Args:
-            title: 通知标题
-            message: 通知内容
-            subtitle: 通知副标题（可选）
-        """
-        try:
-            # 构建 osascript 命令
-            script = f'display notification "{message}" with title "{title}"'
-            if subtitle:
-                script = f'display notification "{message}" with title "{title}" subtitle "{subtitle}"'
-
-            # 执行 AppleScript
-            subprocess.run(
-                ["osascript", "-e", script],
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=2  # 设置超时避免阻塞
-            )
-        except Exception as e:
-            # 通知失败不影响主流程，只记录日志
-            logger.debug(f"发送系统通知失败: {e}")
-
-    def start_recording(self):
-        """开始录音"""
-        if not self.recording:
-            try:
-                # 选择最佳设备
-                device_idx, best_device = self._get_best_input_device()
-
-                if best_device is None:
-                    # 没有可用的白名单设备
-                    self._send_notification(
-                        title="无可用音频设备",
-                        message="请连接麦克风",
-                        subtitle="录音失败"
-                    )
-                    raise RuntimeError("没有可用的音频输入设备")
-
-                # 检查设备是否切换
-                new_device_name = best_device['name']
-                logger.info(f"设备选择: 最佳设备={new_device_name}, 上次使用={self._last_used_device}")
-                device_switched = (self._last_used_device is not None and
-                                   self._last_used_device != new_device_name)
-                first_recording = (self._last_used_device is None)
-
-                # 更新当前设备和采样率
-                self.current_device = new_device_name
-                self.sample_rate = int(best_device['default_samplerate'])
-                self._last_used_device = new_device_name
-
-                logger.info("开始录音...")
-                self._start_capture_session(clear_queue=True)
-
-                # 只有在设备切换或第一次录音时才发送通知
-                if device_switched or first_recording:
-                    if device_switched:
-                        self._send_notification(
-                            title="音频设备已切换",
-                            message=f"使用: {self.current_device}",
-                            subtitle=""
-                        )
-                    else:
-                        self._send_notification(
-                            title="开始录音",
-                            message=f"使用: {self.current_device}",
-                            subtitle=""
-                        )
-
-                def audio_callback(indata, frames, time, status):
-                    if status:
-                        status_str = str(status).lower()
-                        logger.warning(f"音频录制状态: {status}")
-                        # 检测设备断开错误（排除普通的 overflow）
-                        if ("input" in status_str or "device" in status_str) and "overflow" not in status_str:
-                            if not self._device_error_detected:
-                                self._device_error_detected = True
-                                self._handle_device_disconnect()
-                            return
-                    if self.recording:
-                        self._capture_audio_chunk(indata, stream_to_queue=False)
-
-                self.stream = sd.InputStream(
-                    channels=1,
-                    samplerate=self.sample_rate,
-                    callback=audio_callback,
-                    device=device_idx,  # 使用选定的设备
-                    latency='low'  # 使用低延迟模式
-                )
-                self.stream.start()
-                logger.info(f"音频流已启动 (设备: {self.current_device})")
-                
-                # 设置自动停止定时器
-                self.auto_stop_timer = threading.Timer(self.max_record_duration, self._auto_stop_recording)
-                self.auto_stop_timer.start()
-                logger.info(f"⏱️  已设置自动停止定时器: {self.max_record_duration/60:.1f}分钟后自动停止")
-            except Exception as e:
-                self.recording = False
-                error_msg = str(e)
-                logger.error(f"启动录音失败: {error_msg}")
-
-                # 发送系统通知
-                self._send_notification(
-                    title="⚠️ 音频设备错误",
-                    message="麦克风可能已断开，请检查设备连接",
-                    subtitle="录音启动失败"
-                )
-
-                raise
-    
-    def stop_recording(self, abort=False):
-        """停止录音并返回音频数据
-        
-        Args:
-            abort: 是否放弃录音（不返回音频数据）
-        """
-        return self._finalize_recording(
-            abort,
-            enforce_min_duration=True,
-            clear_queue=True,
-        )
+    # ------------------------------------------------------------------
+    # 流式音频块
+    # ------------------------------------------------------------------
 
     async def stream_audio_chunks(self, chunk_duration_ms: int = 200, target_sample_rate: int = 16000) -> AsyncGenerator[bytes, None]:
         """
@@ -468,12 +537,10 @@ class AudioRecorder:
         Yields:
             bytes: 16-bit PCM 音频数据（重采样到目标采样率）
         """
-        # 计算原始采样率下每个 chunk 需要的采样点数
         samples_per_chunk_original = int(self.sample_rate * chunk_duration_ms / 1000)
         accumulated_samples = []
         chunk_count = 0
 
-        # 计算重采样比例
         resample_ratio = target_sample_rate / self.sample_rate
         need_resample = abs(resample_ratio - 1.0) > 0.01
 
@@ -491,22 +558,13 @@ class AudioRecorder:
 
         while self.recording or not self.audio_queue.empty():
             try:
-                # 非阻塞获取音频数据
                 chunk = self.audio_queue.get_nowait()
                 accumulated_samples.append(chunk)
 
-                # 计算累积的采样点数
                 total_samples = sum(len(c) for c in accumulated_samples)
-
-                # 当累积够一个完整的 chunk 时，yield 出去
                 if total_samples >= samples_per_chunk_original:
-                    # 合并所有累积的音频
                     audio = np.concatenate(accumulated_samples)
-
-                    # 取出完整的 chunk
                     chunk_data = audio[:samples_per_chunk_original]
-
-                    # 保留剩余部分
                     remaining = audio[samples_per_chunk_original:]
                     accumulated_samples = [remaining] if len(remaining) > 0 else []
 
@@ -518,7 +576,6 @@ class AudioRecorder:
             except queue.Empty:
                 await asyncio.sleep(0.02)  # 20ms
 
-        # 录音结束，输出剩余的音频
         logger.info(f"🎵 录音结束，已输出 {chunk_count} 个块，检查剩余音频...")
         if accumulated_samples:
             audio = np.concatenate(accumulated_samples)
@@ -528,111 +585,3 @@ class AudioRecorder:
                 logger.info(f"🎵 yield 最后音频块 #{chunk_count}: {len(chunk_bytes)} bytes")
                 yield chunk_bytes
         logger.info(f"🎵 音频生成器结束，共 {chunk_count} 个块")
-
-    def start_streaming_recording(self) -> Optional[str]:
-        """
-        开始流式录音（用于豆包流式转录）
-
-        Returns:
-            None: 成功
-            str: 错误信息
-        """
-        if self.recording:
-            # 检查流是否真的还活着，如果流已死则是残留状态（如扣盖恢复后）
-            if self.stream:
-                try:
-                    if self.stream.active:
-                        return "已经在录音中"
-                except Exception:
-                    pass
-            # 残留状态，强制清理
-            logger.warning("♻️ 检测到残留的录音状态（流已失效），自动清理...")
-            self.reset_streaming_state(reason="流已失效，自动清理")
-
-        try:
-            # 选择最佳设备
-            device_idx, best_device = self._get_best_input_device()
-
-            if best_device is None:
-                self._send_notification(
-                    title="无可用音频设备",
-                    message="请连接麦克风",
-                    subtitle="录音失败"
-                )
-                return "没有可用的音频输入设备"
-
-            # 检查设备是否切换
-            new_device_name = best_device['name']
-            device_switched = (self._last_used_device is not None and
-                               self._last_used_device != new_device_name)
-            first_recording = (self._last_used_device is None)
-
-            # 更新当前设备和采样率
-            self.current_device = new_device_name
-            self.sample_rate = int(best_device['default_samplerate'])
-            self._last_used_device = new_device_name
-
-            logger.info("开始流式录音...")
-            self._start_capture_session(clear_queue=True)
-
-            # 只有在设备切换或第一次录音时才发送通知
-            if device_switched or first_recording:
-                if device_switched:
-                    self._send_notification(
-                        title="音频设备已切换",
-                        message=f"使用: {self.current_device}",
-                        subtitle=""
-                    )
-                else:
-                    self._send_notification(
-                        title="开始流式录音",
-                        message=f"使用: {self.current_device}",
-                        subtitle=""
-                    )
-
-            def audio_callback(indata, frames, time, status):
-                if status:
-                    status_str = str(status).lower()
-                    logger.warning(f"音频录制状态: {status}")
-                    if ("input" in status_str or "device" in status_str) and "overflow" not in status_str:
-                        if not self._device_error_detected:
-                            self._device_error_detected = True
-                            self._handle_device_disconnect()
-                        return
-                if self.recording:
-                    self._capture_audio_chunk(indata, stream_to_queue=True)
-
-            self.stream = sd.InputStream(
-                channels=1,
-                samplerate=self.sample_rate,
-                callback=audio_callback,
-                device=device_idx,
-                latency='low'
-            )
-            self.stream.start()
-            logger.info(f"流式音频流已启动 (设备: {self.current_device})")
-
-            # 设置自动停止定时器
-            self.auto_stop_timer = threading.Timer(self.max_record_duration, self._auto_stop_recording)
-            self.auto_stop_timer.start()
-
-            return None  # 成功
-
-        except Exception as e:
-            self.recording = False
-            error_msg = str(e)
-            logger.error(f"启动流式录音失败: {error_msg}")
-            self._send_notification(
-                title="⚠️ 音频设备错误",
-                message="麦克风可能已断开，请检查设备连接",
-                subtitle="录音启动失败"
-            )
-            return error_msg
-
-    def stop_streaming_recording(self, abort=False):
-        """停止流式录音"""
-        return self._finalize_recording(
-            abort,
-            enforce_min_duration=False,
-            clear_queue=False,
-        )

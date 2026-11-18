@@ -2,50 +2,15 @@ import os
 import subprocess
 import json
 import tempfile
-import threading
 import time
-from functools import wraps
 
-import dotenv
-
-from src.llm.translate import TranslateProcessor
-from src.llm.kimi import KimiProcessor
 from ..utils.logger import logger
+from ..utils.timeout import timeout_decorator
 
-dotenv.load_dotenv()
-
-def timeout_decorator(seconds):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            result = [None]
-            error = [None]
-            completed = threading.Event()
-
-            def target():
-                try:
-                    result[0] = func(*args, **kwargs)
-                except Exception as e:
-                    error[0] = e
-                finally:
-                    completed.set()
-
-            thread = threading.Thread(target=target)
-            thread.daemon = True
-            thread.start()
-
-            if completed.wait(seconds):
-                if error[0] is not None:
-                    raise error[0]
-                return result[0]
-            raise TimeoutError(f"操作超时 ({seconds}秒)")
-
-        return wrapper
-    return decorator
 
 class LocalWhisperProcessor:
     # 类级别的配置参数
-    DEFAULT_TIMEOUT = 180  # 修改为180秒（3分钟）
+    DEFAULT_TIMEOUT = 180  # 秒
     
     def __init__(self):
         # 从环境变量获取whisper.cpp路径和模型路径
@@ -70,10 +35,6 @@ class LocalWhisperProcessor:
             raise FileNotFoundError(f"Whisper 模型未找到: {full_model_path}")
         
         self.timeout_seconds = self.DEFAULT_TIMEOUT
-        self.translate_processor = TranslateProcessor()
-        self.kimi_processor = KimiProcessor()
-        # 是否启用Kimi润色功能（默认关闭，通过快捷键动态控制）
-        self.enable_kimi_polish = os.getenv("ENABLE_KIMI_POLISH", "false").lower() == "true"
         
     def _save_audio_to_temp_file(self, audio_buffer):
         """将音频数据保存到临时WAV文件"""
@@ -87,7 +48,7 @@ class LocalWhisperProcessor:
         finally:
             temp_file.close()
 
-    @timeout_decorator(180)  # 修改为180秒（3分钟）
+    @timeout_decorator(DEFAULT_TIMEOUT)
     def _call_whisper_cpp(self, wav_file):
         """调用本地whisper.cpp进行转录"""
         # 创建临时文件作为输出前缀
@@ -119,7 +80,7 @@ class LocalWhisperProcessor:
             logger.info(f"执行whisper.cpp命令: {' '.join(cmd)}")
             
             # 执行命令
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
             
             # 读取JSON结果文件
             json_file = prefix + ".json"
@@ -175,14 +136,9 @@ class LocalWhisperProcessor:
             except Exception as e:
                 logger.warning(f"清理临时文件失败: {e}")
 
-    def process_audio(self, audio_buffer, mode="transcriptions", prompt="", archive_path=None):
-        """处理音频（转录或翻译）
-        
-        Args:
-            audio_buffer: 音频数据缓冲
-            mode: 'transcriptions' 或 'translations'，决定是转录还是翻译
-            prompt: 提示词（暂不支持）
-        
+    def process_audio(self, audio_buffer):
+        """用本地 whisper.cpp 转录一段 WAV 音频。
+
         Returns:
             tuple: (结果文本, 错误信息)
             - 如果成功，错误信息为 None
@@ -192,7 +148,7 @@ class LocalWhisperProcessor:
         try:
             start_time = time.time()
             
-            logger.info(f"正在使用本地 whisper.cpp 处理音频... (模式: {mode})")
+            logger.info("正在使用本地 whisper.cpp 处理音频...")
 
             # 保存音频到临时文件用于处理
             wav_file = self._save_audio_to_temp_file(audio_buffer)
@@ -200,19 +156,8 @@ class LocalWhisperProcessor:
             # 调用whisper.cpp进行转录
             result = self._call_whisper_cpp(wav_file)
             
-            logger.info(f"本地处理成功 ({mode}), 耗时: {time.time() - start_time:.1f}秒")
+            logger.info(f"本地处理成功, 耗时: {time.time() - start_time:.1f}秒")
             logger.info(f"转录结果: {result}")
-            
-            # 如果启用Kimi润色功能，对转录结果进行润色
-            if self.enable_kimi_polish and result:
-                result = self.kimi_processor.polish_text(result)
-            
-            # 如果是翻译模式，调用翻译服务
-            if mode == "translations" and result:
-                logger.info("正在翻译结果...")
-                result = self.translate_processor.translate(result)
-                logger.info(f"翻译结果: {result}")
-            
             return result, None
 
         except TimeoutError:

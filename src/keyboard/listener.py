@@ -38,19 +38,19 @@ def _process_name(pid):
 
 
 class KeyboardManager:
-    def __init__(self, on_record_start, on_record_stop, on_translate_start, on_translate_stop, on_kimi_start, on_kimi_stop, on_reset_state, on_state_change=None):
+    """监听全局热键（默认 Ctrl+F / Ctrl+I），维护录音状态机，并把转录文本粘贴到光标处。"""
+
+    KEY_DEBOUNCE_TIME = 0.3  # 按键防抖时间（秒）
+
+    def __init__(self, on_record_start, on_record_stop, on_local_start, on_local_stop, on_state_change=None):
         self.keyboard = Controller()
-        self.ctrl_pressed = False  # 改为ctrl键状态
-        self.f_pressed = False  # F键状态
-        self.i_pressed = False  # I键状态
-        self.temp_text_length = 0  # 用于跟踪临时文本的长度
-        self.processing_text = None  # 用于跟踪正在处理的文本
-        self.error_message = None  # 用于跟踪错误信息
-        self.warning_message = None  # 用于跟踪警告信息
-        self.is_recording = False  # toggle模式的录音状态
+        self.modifier_pressed = False  # 修饰键（默认 Ctrl）是否按着
+        self.f_pressed = False  # 转录键（默认 F）是否按着
+        self.i_pressed = False  # I 键是否按着
+        self.error_message = None
+        self.warning_message = None
+        self.is_recording = False  # toggle 模式的录音状态
         self.last_key_time = 0  # 防止重复触发
-        self.KEY_DEBOUNCE_TIME = 0.3  # 按键防抖时间（秒）
-        self._original_clipboard = None  # 保存原始剪贴板内容
 
         # macOS 事件拦截：需要吞掉的组合键虚拟键码集合 + 修饰键掩码
         # （在 start_listening 里根据实际配置计算）
@@ -60,206 +60,103 @@ class KeyboardManager:
         # tap 自愈：当前 listener 引用 + 禁用告警的限频时间戳
         self._listener = None
         self._tap_disabled_log_time = 0.0
-        
-        
+
         # 回调函数
-        self.on_record_start = on_record_start
-        self.on_record_stop = on_record_stop
-        self.on_translate_start = on_translate_start
-        self.on_translate_stop = on_translate_stop
-        self.on_kimi_start = on_kimi_start
-        self.on_kimi_stop = on_kimi_stop
-        self.on_reset_state = on_reset_state
+        self.on_record_start = on_record_start  # Ctrl+F 开始
+        self.on_record_stop = on_record_stop    # Ctrl+F 结束
+        self.on_local_start = on_local_start    # Ctrl+I 开始（本地 Whisper）
+        self.on_local_stop = on_local_stop      # Ctrl+I 结束
         self.on_state_change = on_state_change
 
-        
-        # 状态管理
         self._state = InputState.IDLE
-        self._state_messages = {
-            InputState.IDLE: "",
-            InputState.RECORDING: "0",
-            InputState.RECORDING_TRANSLATE: "0",
-            InputState.RECORDING_KIMI: "0",
-            InputState.PROCESSING: "1",
-            InputState.PROCESSING_KIMI: "1",
-            InputState.TRANSLATING: "1",
-            InputState.ERROR: lambda msg: f"{msg}",  # 错误消息使用函数动态生成
-            InputState.WARNING: lambda msg: f"! {msg}"  # 警告消息使用感叹号
-        }
 
-        self.state_symbol_enabled = True
-
-        # 获取系统平台
-        sysetem_platform = os.getenv("SYSTEM_PLATFORM")
-        if sysetem_platform == "win" :
-            self.sysetem_platform = Key.ctrl
+        # 粘贴用的快捷键修饰键：Mac 是 Cmd，Windows 是 Ctrl
+        if os.getenv("SYSTEM_PLATFORM") == "win":
+            self.paste_modifier = Key.ctrl
             logger.info("配置到Windows平台")
         else:
-            self.sysetem_platform = Key.cmd
+            self.paste_modifier = Key.cmd
             logger.info("配置到Mac平台")
-        
 
-        # 获取转录和翻译按钮
-        transcriptions_button = os.getenv("TRANSCRIPTIONS_BUTTON")
+        self.transcriptions_button = self._parse_key(os.getenv("TRANSCRIPTIONS_BUTTON") or "f")
+        # 热键的修饰键。旧版本叫 TRANSLATIONS_BUTTON（当年和翻译模式共用），仍然兼容
+        modifier_name = os.getenv("HOTKEY_MODIFIER") or os.getenv("TRANSLATIONS_BUTTON") or "ctrl"
+        self.modifier_key = self._parse_key(modifier_name)
+        transcriptions_name = os.getenv("TRANSCRIPTIONS_BUTTON") or "f"
+        logger.info(f"按 {modifier_name} + {transcriptions_name}：开始/结束录音（豆包流式，豆包不可用时用 OpenAI）")
+        logger.info(f"按 {modifier_name} + i：开始/结束录音（本地 Whisper）")
+
+    @staticmethod
+    def _parse_key(name):
+        """字符键（如 f）用字符串表示，特殊键（如 ctrl）用 pynput 的 Key 枚举。"""
+        if len(name) == 1 and name.isalpha():
+            return name
         try:
-            # 字符键（如f）直接使用字符串，特殊键使用Key枚举
-            if len(transcriptions_button) == 1 and transcriptions_button.isalpha():
-                self.transcriptions_button = transcriptions_button
-            else:
-                self.transcriptions_button = Key[transcriptions_button]
-            logger.info(f"配置到转录按钮：{transcriptions_button}")
+            return Key[name]
         except KeyError:
-            logger.error(f"无效的转录按钮配置：{transcriptions_button}")
+            raise ValueError(f"无效的按键配置：{name}")
 
-        translations_button = os.getenv("TRANSLATIONS_BUTTON")
-        try:
-            # 字符键（如f）直接使用字符串，特殊键使用Key枚举
-            if len(translations_button) == 1 and translations_button.isalpha():
-                self.translations_button = translations_button
-            else:
-                self.translations_button = Key[translations_button]
-            logger.info(f"配置到翻译按钮(与转录按钮组合)：{translations_button}")
-        except KeyError:
-            logger.error(f"无效的翻译按钮配置：{translations_button}")
-
-        logger.info(f"按 {translations_button} + {transcriptions_button} 键：切换录音状态（OpenAI GPT-4o transcribe 模式）")
-        logger.info(f"按 {translations_button} + I 键：切换录音状态（本地 Whisper 模式）")
-        logger.info(f"两种模式都是按一下开始，再按一下结束")
-    
     @property
     def state(self):
         """获取当前状态"""
         return self._state
-    
+
     @state.setter
     def state(self, new_state):
-        """设置新状态并更新UI"""
-        if new_state != self._state:
-            self._state = new_state
-            
-            # 获取状态消息
-            message = self._state_messages[new_state]
-            
-            # 根据状态转换类型显示不同消息
-            if new_state == InputState.RECORDING:
-                # 录音状态
-                self.temp_text_length = 0
-                if self.state_symbol_enabled:
-                    self.type_temp_text(message)
-                self.on_record_start()
-                
-            elif new_state == InputState.RECORDING_TRANSLATE:
-                # 翻译,录音状态
-                self.temp_text_length = 0
-                if self.state_symbol_enabled:
-                    self.type_temp_text(message)
-                self.on_translate_start()
-                
-            elif new_state == InputState.RECORDING_KIMI:
-                # 本地 Whisper 录音状态
-                self.temp_text_length = 0
-                if self.state_symbol_enabled:
-                    self.type_temp_text(message)
-                self.on_kimi_start()
+        """切换状态，并触发对应的开始/结束录音回调"""
+        if new_state == self._state:
+            return
+        self._state = new_state
 
-            elif new_state == InputState.PROCESSING:
-                self._delete_previous_text()
-                if self.state_symbol_enabled:
-                    self.type_temp_text(message)
-                self.processing_text = message
-                self.on_record_stop()
-                
-            elif new_state == InputState.PROCESSING_KIMI:
-                # 本地 Whisper 处理状态
-                self._delete_previous_text()
-                if self.state_symbol_enabled:
-                    self.type_temp_text(message)
-                self.processing_text = message
-                self.on_kimi_stop()
+        if new_state == InputState.RECORDING:
+            self.on_record_start()
+        elif new_state == InputState.RECORDING_LOCAL:
+            self.on_local_start()
+        elif new_state == InputState.PROCESSING:
+            self.on_record_stop()
+        elif new_state == InputState.PROCESSING_LOCAL:
+            self.on_local_stop()
+        elif new_state in (InputState.WARNING, InputState.ERROR):
+            message = self.warning_message if new_state == InputState.WARNING else self.error_message
+            logger.warning(f"状态栏提示（{new_state.name}）：{message}")
+            self.warning_message = None
+            self.error_message = None
+            self._schedule_message_clear()
 
-            elif new_state == InputState.TRANSLATING:
-                # 翻译状态
-                self._delete_previous_text()                 
-                if self.state_symbol_enabled:
-                    self.type_temp_text(message)
-                self.processing_text = message
-                self.on_translate_stop()
-            
-            elif new_state == InputState.WARNING:
-                # 警告状态
-                message = message(self.warning_message)
-                self._delete_previous_text()
-                if self.state_symbol_enabled:
-                    self.type_temp_text(message)
-                self.warning_message = None
-                self._schedule_message_clear()     
-            
-            elif new_state == InputState.ERROR:
-                # 错误状态
-                message = message(self.error_message)
-                self._delete_previous_text()
-                if self.state_symbol_enabled:
-                    self.type_temp_text(message)
-                self.error_message = None
-                self._schedule_message_clear()  
-        
-            elif new_state == InputState.IDLE:
-                # 空闲状态，清除所有临时文本
-                self.processing_text = None
-            
-            else:
-                # 其他状态
-                if self.state_symbol_enabled:
-                    self.type_temp_text(message)
+        # 上面的回调（如开流失败）可能已经在内部把状态 reset 回 IDLE，
+        # 这时要上报真实的当前状态，而不是这次要切换的 new_state，
+        # 否则状态栏会显示"录音中"而实际已经空闲。
+        if self.on_state_change:
+            try:
+                self.on_state_change(self._state)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug(f"状态回调异常: {exc}")
 
-            if self.on_state_change:
-                try:
-                    self.on_state_change(new_state)
-                except Exception as exc:  # noqa: BLE001
-                    logger.debug(f"状态回调异常: {exc}")
-
-    def set_state_symbol_enabled(self, enabled: bool):
-        """开启或关闭在输入框内展示状态符号"""
-        self.state_symbol_enabled = enabled
-    
     def _schedule_message_clear(self):
-        """计划清除消息"""
+        """警告/错误在状态栏显示 2 秒后回到空闲"""
         def clear_message():
-            time.sleep(2)  # 警告消息显示2秒
+            time.sleep(2)
             self.state = InputState.IDLE
-        
-        import threading
+
         threading.Thread(target=clear_message, daemon=True).start()
-    
+
     def show_warning(self, warning_message):
         """显示警告消息"""
         self.warning_message = warning_message
         self.state = InputState.WARNING
-    
+
     def show_error(self, error_message):
         """显示错误消息"""
         self.error_message = error_message
         self.state = InputState.ERROR
-    
-    def _save_clipboard(self):
-        """保存当前剪贴板内容"""
-        if self._original_clipboard is None:
-            self._original_clipboard = pyperclip.paste()
-
-    def _restore_clipboard(self):
-        """恢复原始剪贴板内容"""
-        if self._original_clipboard is not None:
-            pyperclip.copy(self._original_clipboard)
-            self._original_clipboard = None
 
     def keep_clipboard_text(self, text):
-        """将指定文本保留到剪贴板，避免后续状态重置恢复旧内容。"""
+        """把文本放进剪贴板，方便用户手动粘贴（流式出错时的兜底）。"""
         if not text:
             return False
 
         try:
             pyperclip.copy(text)
-            self._original_clipboard = None
             logger.info("已将兜底转录文本保留到剪贴板")
             return True
         except Exception as e:
@@ -267,41 +164,31 @@ class KeyboardManager:
             return False
 
     def type_text(self, text, error_message=None):
-        """将文字输入到当前光标位置
-        
+        """通过剪贴板把文字粘贴到当前光标位置
+
         Args:
-            text: 要输入的文本或包含文本和错误信息的元组
-            error_message: 错误信息
+            text: 要输入的文本
+            error_message: 错误信息，非空时只显示错误、不输入
         """
-        # 如果text是元组，说明是从process_audio返回的结果
-        if isinstance(text, tuple):
-            text, error_message = text
-            
         if error_message:
             self.show_error(error_message)
             return
-            
+
         if not text:
             # 如果没有文本且不是错误，可能是录音时长不足
-            if self.state in (InputState.PROCESSING, InputState.TRANSLATING):
+            if self.state == InputState.PROCESSING:
                 self.show_warning("录音时长过短，请至少录制1秒")
             return
-            
+
         try:
             logger.info("正在输入转录文本...")
-            self._delete_previous_text()
-            
-            # 最终转录文本通过剪贴板输入
             pyperclip.copy(text)
-            
-            # 模拟 Ctrl + V 粘贴文本
-            with self.keyboard.pressed(self.sysetem_platform):
+            with self.keyboard.pressed(self.paste_modifier):
                 self.keyboard.press('v')
                 self.keyboard.release('v')
-            
+
             # 等待一小段时间确保文本已输入
             time.sleep(0.5)
-            
             logger.info("文本输入完成")
 
             # 清理处理状态（流式识别中不重置，保持录音状态）
@@ -310,45 +197,7 @@ class KeyboardManager:
         except Exception as e:
             logger.error(f"文本输入失败: {e}")
             self.show_error(f"❌ 文本输入失败: {e}")
-    
-    def _delete_previous_text(self):
-        """删除之前输入的临时文本"""
-        if self.temp_text_length > 0:
-            # 添加0.2秒延迟，让删除操作更自然
-            import time
-            time.sleep(0.2)
-            
-            for _ in range(self.temp_text_length):
-                self.keyboard.press(Key.backspace)
-                self.keyboard.release(Key.backspace)
 
-        self.temp_text_length = 0
-    
-    def type_temp_text(self, text):
-        """输入临时状态文本"""
-        if not text or not self.state_symbol_enabled:
-            return
-            
-        # 判断是否为状态符号（现在使用数字）
-        is_status_symbol = text in ['0', '1']
-        
-        if is_status_symbol:
-            # 状态符号直接输入，不使用剪贴板
-            try:
-                self.keyboard.type(text)
-            except Exception as e:
-                # 如果直接输入失败，记录错误但不中断程序
-                logger.warning(f"直接输入状态符号失败: {e}, 文本: {text}")
-        else:
-            # 其他文本（如错误消息、警告等）通过剪贴板输入
-            pyperclip.copy(text)
-            with self.keyboard.pressed(self.sysetem_platform):
-                self.keyboard.press('v')
-                self.keyboard.release('v')
-        
-        # 更新临时文本长度
-        self.temp_text_length = len(text)
-    
     def _set_state_async(self, new_state):
         """在后台线程里切换状态。
 
@@ -363,125 +212,63 @@ class KeyboardManager:
             daemon=True,
         ).start()
 
+    def _toggle(self, recording_state, processing_state, label):
+        """按一下开始录音，再按一下结束"""
+        current_time = time.time()
+        if current_time - self.last_key_time < self.KEY_DEBOUNCE_TIME:
+            return
+        self.last_key_time = current_time
+
+        if not self.is_recording:
+            if self.state.can_start_recording:
+                self.is_recording = True
+                self._set_state_async(recording_state)
+                logger.info(f"🎤 开始录音（{label}）")
+        else:
+            self.is_recording = False
+            self._set_state_async(processing_state)
+            logger.info(f"⏹️ 停止录音（{label}）")
+
     def toggle_recording(self):
-        """切换录音状态"""
-        current_time = time.time()
+        """Ctrl+F：切换录音状态"""
+        self._toggle(InputState.RECORDING, InputState.PROCESSING, "Ctrl+F")
 
-        # 防抖处理
-        if current_time - self.last_key_time < self.KEY_DEBOUNCE_TIME:
-            return
+    def toggle_local_recording(self):
+        """Ctrl+I：切换本地 Whisper 录音状态"""
+        self._toggle(InputState.RECORDING_LOCAL, InputState.PROCESSING_LOCAL, "本地 Whisper")
 
-        self.last_key_time = current_time
-        
-        if not self.is_recording:
-            # 开始录音
-            if self.state.can_start_recording:
-                self.is_recording = True
-                self._set_state_async(InputState.RECORDING)
-                logger.info("🎤 开始录音（OpenAI GPT-4o transcribe 模式）")
-        else:
-            # 停止录音
-            self.is_recording = False
-            self._set_state_async(InputState.PROCESSING)
-            logger.info("⏹️ 停止录音（OpenAI GPT-4o transcribe 模式）")
-    
-    def toggle_kimi_recording(self):
-        """切换本地 Whisper 录音状态"""
-        current_time = time.time()
-
-        # 防抖处理
-        if current_time - self.last_key_time < self.KEY_DEBOUNCE_TIME:
-            return
-
-        self.last_key_time = current_time
-        
-        if not self.is_recording:
-            # 开始录音
-            if self.state.can_start_recording:
-                self.is_recording = True
-                self._set_state_async(InputState.RECORDING_KIMI)
-                logger.info("🎤 开始录音（本地 Whisper 模式）")
-        else:
-            # 停止录音
-            self.is_recording = False
-            self._set_state_async(InputState.PROCESSING_KIMI)
-            logger.info("⏹️ 停止录音（本地 Whisper 模式）")
+    def _matches(self, key, button):
+        """判断按键是否是配置的某个键（字符键或特殊键）"""
+        if isinstance(button, str):
+            return getattr(key, 'char', None) == button
+        return key == button
 
     def on_press(self, key):
         """按键按下时的回调"""
-        try:
-            # 检查转录按钮（字符键或特殊键）
-            is_transcription_key = False
-            if isinstance(self.transcriptions_button, str):
-                # 字符键
-                is_transcription_key = hasattr(key, 'char') and key.char == self.transcriptions_button
-            else:
-                # 特殊键
-                is_transcription_key = key == self.transcriptions_button
-                
-            # 检查翻译按钮（字符键或特殊键）
-            is_translation_key = False
-            if isinstance(self.translations_button, str):
-                # 字符键
-                is_translation_key = hasattr(key, 'char') and key.char == self.translations_button
-            else:
-                # 特殊键
-                is_translation_key = key == self.translations_button
-            
-            # 检查I键（用于本地 Whisper 模式）
-            if hasattr(key, 'char') and key.char == 'i':
-                self.i_pressed = True
-                # 检查是否同时按下了ctrl+i（本地 Whisper 模式）
-                if self.ctrl_pressed and self.i_pressed:
-                    self.toggle_kimi_recording()
-            elif is_transcription_key:  # F键
-                self.f_pressed = True
-                # 检查是否同时按下了ctrl+f
-                if self.ctrl_pressed and self.f_pressed:
-                    self.toggle_recording()
-            elif is_translation_key:  # Ctrl键
-                self.ctrl_pressed = True
-                # 检查是否同时按下了ctrl+f（OpenAI GPT-4o transcribe 模式）
-                if self.ctrl_pressed and self.f_pressed:
-                    self.toggle_recording()
-                # 检查是否同时按下了ctrl+i（本地 Whisper 模式）
-                elif self.ctrl_pressed and self.i_pressed:
-                    self.toggle_kimi_recording()
-        except AttributeError:
-            pass
+        if getattr(key, 'char', None) == 'i':
+            self.i_pressed = True
+            if self.modifier_pressed:
+                self.toggle_local_recording()
+        elif self._matches(key, self.transcriptions_button):
+            self.f_pressed = True
+            if self.modifier_pressed:
+                self.toggle_recording()
+        elif self._matches(key, self.modifier_key):
+            self.modifier_pressed = True
+            if self.f_pressed:
+                self.toggle_recording()
+            elif self.i_pressed:
+                self.toggle_local_recording()
 
     def on_release(self, key):
         """按键释放时的回调"""
-        try:
-            # 检查转录按钮（字符键或特殊键）
-            is_transcription_key = False
-            if isinstance(self.transcriptions_button, str):
-                # 字符键
-                is_transcription_key = hasattr(key, 'char') and key.char == self.transcriptions_button
-            else:
-                # 特殊键
-                is_transcription_key = key == self.transcriptions_button
-                
-            # 检查翻译按钮（字符键或特殊键）
-            is_translation_key = False
-            if isinstance(self.translations_button, str):
-                # 字符键
-                is_translation_key = hasattr(key, 'char') and key.char == self.translations_button
-            else:
-                # 特殊键
-                is_translation_key = key == self.translations_button
-                
-            # 检查I键释放
-            if hasattr(key, 'char') and key.char == 'i':
-                self.i_pressed = False
-            elif is_transcription_key:  # F键释放
-                self.f_pressed = False
-            elif is_translation_key:  # Ctrl键释放
-                self.ctrl_pressed = False
+        if getattr(key, 'char', None) == 'i':
+            self.i_pressed = False
+        elif self._matches(key, self.transcriptions_button):
+            self.f_pressed = False
+        elif self._matches(key, self.modifier_key):
+            self.modifier_pressed = False
 
-        except AttributeError:
-            pass
-    
     def _build_hotkey_suppression(self):
         """计算需要在系统层拦截的组合键。
 
@@ -529,7 +316,7 @@ class KeyboardManager:
             Key.shift_l: kCGEventFlagMaskShift,
             Key.shift_r: kCGEventFlagMaskShift,
         }
-        mask = modifier_masks.get(self.translations_button, kCGEventFlagMaskControl)
+        mask = modifier_masks.get(self.modifier_key, kCGEventFlagMaskControl)
         return vks, mask
 
     def _darwin_intercept(self, event_type, event):
@@ -657,28 +444,15 @@ class KeyboardManager:
 
         threading.Thread(target=_watch, name="tap-watchdog", daemon=True).start()
 
-    def reset_state(self, *, restore_clipboard=True):
-        """重置所有状态和临时文本"""
-        # 清除临时文本
-        self._delete_previous_text()
-        
-        # 恢复剪贴板。异常兜底输出时会跳过恢复，保留救援文本给用户手动粘贴。
-        if restore_clipboard:
-            self._restore_clipboard()
-        else:
-            self._original_clipboard = None
-        
-        # 重置状态标志
-        self.ctrl_pressed = False
+    def reset_state(self):
+        """重置所有按键和录音状态，回到空闲"""
+        self.modifier_pressed = False
         self.f_pressed = False
         self.i_pressed = False
         self.is_recording = False
         self.last_key_time = time.time()
-        self.processing_text = None
         self.error_message = None
         self.warning_message = None
-        
-        # 设置为空闲状态
         self.state = InputState.IDLE
 
 def check_accessibility_permissions():

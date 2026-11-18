@@ -2,9 +2,13 @@ import atexit
 import logging
 import os
 import queue
+import sys
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 
 import colorlog
+
+
+_queue_listener = None
 
 
 def setup_logger():
@@ -18,8 +22,9 @@ def setup_logger():
     # 创建logs目录
     os.makedirs('logs', exist_ok=True)
 
-    # 控制台处理器
-    console_handler = colorlog.StreamHandler()
+    # 控制台处理器。写 stdout 而不是默认的 stderr：sounddevice 每次初始化 PortAudio
+    # 时会把 stderr 临时重定向到 /dev/null，这期间写到 stderr 的日志会直接丢掉。
+    console_handler = colorlog.StreamHandler(sys.stdout)
     console_handler.setFormatter(colorlog.ColoredFormatter(
         fmt='%(asctime)s - %(log_color)s%(levelname)-8s%(reset)s - %(message)s',
         datefmt='%H:%M:%S',
@@ -51,6 +56,8 @@ def setup_logger():
     )
     queue_listener.start()
     atexit.register(queue_listener.stop)
+    global _queue_listener
+    _queue_listener = queue_listener
 
     logger = colorlog.getLogger(__name__)
     for handler in logger.handlers[:]:
@@ -61,3 +68,12 @@ def setup_logger():
     return logger
 
 logger = setup_logger()
+
+
+def flush_logs():
+    """把队列里还没写出的日志全部写完。用于 os._exit() 之前（它不会跑 atexit）。"""
+    if _queue_listener is not None:
+        try:
+            _queue_listener.stop()
+        except Exception:
+            pass

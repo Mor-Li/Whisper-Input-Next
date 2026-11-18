@@ -1,72 +1,49 @@
 #!/bin/bash
+# 启动 Whisper-Input-Next。
+#
+# 在 tmux 会话 Whisper-Input-Next 里运行守护循环 scripts/supervise.sh，
+# 程序崩溃或麦克风卡死后会自动重启。已有同名会话时先关掉旧的再重开。
+#
+# 用法：
+#   ./start.sh            启动并进入 tmux 界面（Ctrl+B 再按 D 退出界面，程序继续在后台跑）
+#   ./start.sh --detach   只在后台启动，不进入界面（开机自启用的就是这个）
+#
+# 开机自启：./scripts/install_autostart.sh
 
-# Whisper-Input-Next 启动脚本 v2.0.0
-# 用于启动语音转录工具
+set -euo pipefail
+cd "$(dirname "$0")"
+# 开机自启时 launchd 给的 PATH 里没有 Homebrew，找不到 tmux
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
-echo "🚀 启动 Whisper-Input-Next 语音转录工具..."
-
-# 创建日志目录(如果不存在)
-if [ ! -d "logs" ]; then
-  mkdir -p logs
+SESSION="Whisper-Input-Next"
+ATTACH=1
+if [ "${1:-}" = "--detach" ]; then
+  ATTACH=0
 fi
 
-# 生成带时间戳的日志文件名
-LOG_FILE="logs/Whisper-Input-Next-$(date +%Y%m%d-%H%M%S).log"
-echo "📝 日志将保存到: $LOG_FILE"
-
-# 检查.env文件是否存在
 if [ ! -f ".env" ]; then
-  echo "❌ 未找到 .env 配置文件"
-  echo "请复制 env.example 到 .env 并配置您的API密钥"
+  echo "❌ 未找到 .env 配置文件，请复制 env.example 为 .env 并填好密钥"
+  exit 1
+fi
+if [ ! -x ".venv/bin/python" ]; then
+  echo "❌ 未找到虚拟环境 .venv，请先按 README 安装依赖"
   exit 1
 fi
 
-# 检查是否已有名为Whisper-Input-Next的会话
-if tmux has-session -t Whisper-Input-Next 2>/dev/null; then
-  echo "🔄 已有Whisper-Input-Next会话存在，将关闭旧会话并创建新会话..."
-  tmux kill-session -t Whisper-Input-Next
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+  echo "🔄 关闭旧的 $SESSION 会话..."
+  tmux kill-session -t "$SESSION"
 fi
 
-# 创建虚拟环境(如果不存在)
-if [ ! -d ".venv" ]; then
-  echo "🐍 创建虚拟环境..."
-  python -m venv .venv
-  echo "✅ 虚拟环境创建完成"
+# 先开一个空 shell 再发命令，让它加载 ~/.zshrc（部分 API 密钥是在那里 export 的）
+tmux new-session -d -s "$SESSION" -c "$PWD"
+sleep 0.5
+tmux send-keys -t "$SESSION" "./scripts/supervise.sh" C-m
+
+echo "✅ Whisper-Input-Next 已在 tmux 会话 $SESSION 里启动"
+echo "   Ctrl+F：豆包流式转录    Ctrl+I：本地 Whisper"
+echo "   查看界面：tmux attach -t $SESSION    最新日志：logs/latest.log"
+
+if [ "$ATTACH" = 1 ] && [ -t 1 ]; then
+  tmux attach -t "$SESSION"
 fi
-
-# 检查依赖是否已安装
-if [ ! -f ".venv/pyvenv.cfg" ] || [ ! -f "venv/lib/python*/site-packages/openai" ]; then
-  echo "📦 安装项目依赖..."
-  source .venv/bin/activate
-  pip install -r requirements.txt
-  echo "✅ 依赖安装完成"
-fi
-
-# 创建一个新的tmux会话
-tmux new-session -d -s Whisper-Input-Next
-
-# 确保在正确的目录
-tmux send-keys -t Whisper-Input-Next "cd $(pwd)" C-m
-
-# 激活虚拟环境
-tmux send-keys -t Whisper-Input-Next "source .venv/bin/activate" C-m
-
-# 启动应用程序并同时将输出保存到日志文件
-echo "🎙️  启动语音转录服务..."
-tmux send-keys -t Whisper-Input-Next "python main.py 2>&1 | tee $LOG_FILE" C-m
-
-# 连接到会话
-echo ""
-echo "✅ Whisper-Input-Next 已启动！"
-echo "📋 快捷键说明："
-echo "   Ctrl+F: OpenAI GPT-4 转录 (高质量)"
-echo "   Ctrl+I: 本地 Whisper 转录 (省钱)"
-echo ""
-echo "🔧 会话管理："
-echo "   按 Ctrl+B 然后 D 可以分离会话"
-echo "   使用 'tmux attach -t Whisper-Input-Next' 重新连接"
-echo ""
-echo "📝 日志文件: $LOG_FILE"
-echo ""
-
-tmux attach -t Whisper-Input-Next

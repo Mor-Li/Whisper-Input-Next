@@ -226,6 +226,82 @@ class RecorderStreamLifecycleTests(unittest.TestCase):
         self.sd._initialize.reset_mock()
         self.assert_refresh_skipped()
 
+    # ---- CoreAudio 卡死检测：卡死后要上报，让主程序重启进程 ----
+
+    def prepare_for_capture(self, timeout=0.2):
+        """补齐 __new__ 跳过的属性，让 _start_capture 能跑。"""
+        self.module.AudioRecorder.STREAM_OP_TIMEOUT = timeout
+        recorder = self.recorder
+        recorder.recording = False
+        recorder.stream = None
+        # 用被测模块自己的 queue：patch.dict 退出时会移除加载期间新导入的模块，
+        # 测试里再 import 会得到另一份 queue，它的 Empty 和被测代码捕获的不是同一个类
+        recorder.audio_queue = self.module.queue.Queue()
+        recorder._recorded_chunks = []
+        recorder.record_start_time = None
+        recorder.max_record_duration = 600.0
+        recorder.auto_stop_timer = None
+        recorder._recording_lock = threading.RLock()
+        recorder._device_error_detected = False
+        recorder._last_used_device = "MacBook Pro Microphone"
+        recorder.current_device = None
+        recorder.sample_rate = 48000
+        recorder.wedged_reason = None
+        recorder.wedged_callback = Mock()
+        recorder._send_notification = Mock()
+        return recorder
+
+    def test_stop_hang_beyond_timeout_reports_wedged(self):
+        recorder = self.prepare_for_capture()
+        stream = self.stream(block_stop=True)
+        recorder._close_stream_async(stream)
+        self.assertTrue(stream.stop_entered.wait(1))
+        deadline = threading.Event()
+        for _ in range(50):
+            if recorder.wedged_callback.called:
+                break
+            deadline.wait(0.02)
+        recorder.wedged_callback.assert_called_once()
+        self.assertIn("stream.stop()", recorder.wedged_reason)
+
+    def test_open_hang_raises_and_reports_wedged(self):
+        recorder = self.prepare_for_capture()
+        release_open = threading.Event()
+        self.addCleanup(release_open.set)
+
+        def hanging_input_stream(**kwargs):
+            release_open.wait(3)
+            raise RuntimeError("released")
+
+        self.sd.InputStream = hanging_input_stream
+        error = recorder.start_streaming_recording()
+        self.assertIsNotNone(error)
+        self.assertIn("开启音频流", error)
+        self.assertFalse(recorder.recording)
+        self.assertIsNone(recorder.stream)
+        recorder.wedged_callback.assert_called_once()
+
+    def test_start_refuses_immediately_after_wedged(self):
+        recorder = self.prepare_for_capture()
+        recorder.wedged_reason = "stream.stop() 5s 未返回"
+        self.sd.InputStream = Mock(side_effect=AssertionError("must not open"))
+        error = recorder.start_streaming_recording()
+        self.assertIn("等待进程自动重启", error)
+        self.assertFalse(recorder.recording)
+        with self.assertRaises(self.module.AudioSystemWedged):
+            recorder.start_recording()
+
+    def test_successful_open_sets_stream_and_recording(self):
+        recorder = self.prepare_for_capture()
+        opened = Mock()
+        self.sd.InputStream = Mock(return_value=opened)
+        self.assertIsNone(recorder.start_streaming_recording())
+        opened.start.assert_called_once_with()
+        self.assertIs(recorder.stream, opened)
+        self.assertTrue(recorder.recording)
+        recorder.auto_stop_timer.cancel()
+        recorder.wedged_callback.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

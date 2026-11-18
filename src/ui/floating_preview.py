@@ -11,7 +11,6 @@ from AppKit import (
     NSEvent,
     NSFont,
     NSMakeRect,
-    NSMakeSize,
     NSPanel,
     NSPopUpMenuWindowLevel,
     NSTextField,
@@ -144,7 +143,7 @@ class FloatingPreviewWindow:
             self._position_near_caret()
 
             # 用 orderFrontRegardless 而非 orderFront_，
-            # 即便本 app 是后台 (ActivationPolicyProhibited) 也强制上浮。
+            # 本 app 是不激活的后台程序（Accessory），也要强制上浮。
             self._panel.orderFrontRegardless()
             self._is_visible = True
             # 诊断：panel 实际状态
@@ -291,7 +290,7 @@ class FloatingPreviewWindow:
             NSWindowCollectionBehaviorCanJoinAllSpaces
             | NSWindowCollectionBehaviorFullScreenAuxiliary
         )
-        # NSPanel 默认 hidesOnDeactivate=True，本 app 是 prohibited policy，
+        # NSPanel 默认 hidesOnDeactivate=True，本 app 平时不处于激活状态，
         # 一旦其他 app 抢焦点 panel 可能被 orderOut，关掉这个行为。
         self._panel.setHidesOnDeactivate_(False)
         # 防止系统在 Cmd+H / Hide Others 时把窗口一起隐藏掉。

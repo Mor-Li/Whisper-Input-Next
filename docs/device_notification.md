@@ -21,31 +21,19 @@
 
 ## 测试方法
 
-### 方法 1: 使用测试脚本
-
-运行通知功能测试脚本：
+### 检查系统通知本身能不能弹出
 
 ```bash
-source .venv/bin/activate
-python test/test_recorder_notification.py
+osascript -e 'display notification "测试通知" with title "Whisper-Input"'
 ```
 
-### 方法 2: 手动测试
+### 实际测一次拔麦克风
 
 1. 连接外部麦克风（耳机麦克风等）
-2. 启动程序：`python main.py`
+2. 启动程序：`./start.sh`
 3. 在录音过程中拔掉外部麦克风
 4. 尝试开始新的录音
 5. 观察是否收到系统通知
-
-### 方法 3: 使用基础通知测试
-
-测试系统通知是否正常工作：
-
-```bash
-source .venv/bin/activate
-python test/test_notification.py
-```
 
 ## 注意事项
 

@@ -1,8 +1,10 @@
 import io
 import os
 import queue
+import subprocess
 import sys
 import threading
+import time
 import asyncio
 from dataclasses import dataclass
 from typing import Optional
@@ -16,24 +18,27 @@ from src.audio.archive import AudioArchiveManager
 from src.keyboard.listener import KeyboardManager, check_accessibility_permissions
 from src.keyboard.inputState import InputState
 from src.transcription.whisper import WhisperProcessor
-from src.utils.logger import logger
-from src.transcription.senseVoiceSmall import SenseVoiceSmallProcessor
+from src.utils.logger import flush_logs, logger
 from src.transcription.local_whisper import LocalWhisperProcessor
 from src.transcription.doubao_streaming import DoubaoStreamingProcessor
 from src.ui.status_bar import StatusBarController
 from src.ui.floating_preview import FloatingPreviewWindow
 
 # 版本信息
-__version__ = "3.3.1"
+__version__ = "3.4.0"
 __author__ = "Mor-Li"
-__description__ = "Enhanced Voice Transcription Tool with OpenAI GPT-4o Transcribe"
+__description__ = "macOS 语音输入：豆包流式识别为主，OpenAI 和本地 whisper.cpp 备用"
+
+# 主动请求重启时的退出码。start.sh 里的守护循环看到非 0 退出码就会重新拉起程序。
+RESTART_EXIT_CODE = 75
+# 请求重启后，最多等这么久让手上的转录收尾，再退出进程（秒）
+RESTART_GRACE_SECONDS = 60
 
 
 @dataclass
 class TranscriptionJob:
     audio_bytes: bytes
-    processor: str
-    mode: str = "transcriptions"
+    processor: str  # "openai" 或 "local"
     archive_path: Optional[str] = None
     retries_left: int = 0
     attempt: int = 1
@@ -70,40 +75,36 @@ class VoiceAssistant:
         self.transcription_service = os.getenv("TRANSCRIPTION_SERVICE", "doubao")
 
         # 流式转录相关
-        self._streaming_task: Optional[asyncio.Task] = None
-        self._streaming_loop: Optional[asyncio.AbstractEventLoop] = None
         self._streaming_thread: Optional[threading.Thread] = None
         self._current_streaming_archive_path: Optional[str] = None
 
         # 根据配置选择 Ctrl+F 的处理方式
-        if self.transcription_service == "doubao" and self.doubao_processor and self.doubao_processor.is_available():
-            ctrl_f_start = self.start_doubao_streaming
-            ctrl_f_stop = self.stop_doubao_streaming
+        if self.transcription_service == "doubao" and self.doubao_processor:
+            self._ctrl_f_start = self.start_doubao_streaming
+            self._ctrl_f_stop = self.stop_doubao_streaming
             logger.info("Ctrl+F 使用豆包流式识别")
         else:
-            ctrl_f_start = self.start_openai_recording
-            ctrl_f_stop = self.stop_openai_recording
+            self._ctrl_f_start = self.start_openai_recording
+            self._ctrl_f_stop = self.stop_openai_recording
             logger.info("Ctrl+F 使用 OpenAI 批量转录")
 
         self.keyboard_manager = KeyboardManager(
-            on_record_start=ctrl_f_start,    # Ctrl+F: 根据配置选择
-            on_record_stop=ctrl_f_stop,
-            on_translate_start=self.start_translation_recording,  # 保留翻译功能
-            on_translate_stop=self.stop_translation_recording,
-            on_kimi_start=self.start_local_recording,       # Ctrl+I: Local Whisper
-            on_kimi_stop=self.stop_local_recording,
-            on_reset_state=self.reset_state,
+            on_record_start=self._ctrl_f_start,
+            on_record_stop=self._ctrl_f_stop,
+            on_local_start=self.start_local_recording,
+            on_local_stop=self.stop_local_recording,
             on_state_change=self._on_state_change,
         )
-
-        # 使用状态栏反馈状态，不再向输入框输出"0"/"1"
-        self.keyboard_manager.set_state_symbol_enabled(False)
 
         # 设置自动停止录音的回调
         self.audio_recorder.set_auto_stop_callback(self._handle_auto_stop)
 
         # 设置设备断开时的回调
         self.audio_recorder.set_device_disconnect_callback(self._handle_device_disconnect)
+
+        # CoreAudio 卡死后本进程再也录不了音，只能重启进程
+        self._restart_requested = threading.Event()
+        self.audio_recorder.set_wedged_callback(self._on_audio_wedged)
 
         # 后台转录线程
         self._worker_thread = threading.Thread(
@@ -135,25 +136,46 @@ class VoiceAssistant:
         """处理设备断开时的录音停止（保存并转录已录制内容）"""
         logger.warning("设备断开，触发停止录音并转录")
 
-        # 根据当前状态调用相应的 stop 方法
-        if (
-            self._current_state == InputState.RECORDING
-            and self.transcription_service == "doubao"
-            and self.doubao_processor
-            and self.doubao_processor.is_available()
-        ):
-            self.stop_doubao_streaming()
-        elif self._current_state == InputState.RECORDING:
-            self.stop_openai_recording()
-        elif self._current_state == InputState.RECORDING_TRANSLATE:
-            self.stop_translation_recording()
-        elif self._current_state == InputState.RECORDING_KIMI:
+        if self._current_state in (InputState.RECORDING, InputState.DOUBAO_STREAMING):
+            self._ctrl_f_stop()
+        elif self._current_state == InputState.RECORDING_LOCAL:
             self.stop_local_recording()
-        elif self._current_state == InputState.DOUBAO_STREAMING:
-            self.stop_doubao_streaming()
         else:
             # 非录音状态，只重置
             self.keyboard_manager.reset_state()
+
+    def _on_audio_wedged(self, reason: str):
+        """CoreAudio 卡死：等手上的转录收尾后退出进程，由守护循环重新拉起。"""
+        if self._restart_requested.is_set():
+            return
+        self._restart_requested.set()
+        logger.error(f"🔁 音频系统卡死（{reason}），将自动重启 Whisper-Input")
+        try:
+            subprocess.run(
+                ["osascript", "-e",
+                 'display notification "麦克风卡住了，几秒后自动恢复" with title "Whisper-Input 正在重启"'],
+                capture_output=True, timeout=2,
+            )
+        except Exception:
+            pass
+        threading.Thread(
+            target=self._restart_when_idle, name="restart-when-idle", daemon=True,
+        ).start()
+
+    def _restart_when_idle(self):
+        deadline = time.time() + RESTART_GRACE_SECONDS
+        while time.time() < deadline:
+            streaming_busy = self._streaming_thread is not None and self._streaming_thread.is_alive()
+            jobs_busy = self.job_queue.unfinished_tasks > 0
+            if not streaming_busy and not jobs_busy:
+                break
+            time.sleep(0.5)
+        else:
+            logger.warning(f"等待转录收尾超过 {RESTART_GRACE_SECONDS}s，强制重启")
+        logger.warning(f"🔁 进程退出（退出码 {RESTART_EXIT_CODE}），由 start.sh 的守护循环重新启动")
+        flush_logs()
+        # os._exit 不等卡在 CoreAudio 里的线程，也不跑 atexit，所以前面已经手动刷完日志
+        os._exit(RESTART_EXIT_CODE)
 
     def _on_state_change(self, new_state: InputState):
         self._current_state = new_state
@@ -186,7 +208,6 @@ class VoiceAssistant:
         audio_bytes: bytes,
         processor: str,
         *,
-        mode: str = "transcriptions",
         archive_path: Optional[str] = None,
         max_retries: int = 0,
         attempt: int = 1,
@@ -194,14 +215,13 @@ class VoiceAssistant:
         job = TranscriptionJob(
             audio_bytes=audio_bytes,
             processor=processor,
-            mode=mode,
             archive_path=archive_path,
             retries_left=max(0, max_retries),
             attempt=attempt,
         )
         self.job_queue.put(job)
         retry_tag = f" [重试 第{attempt}次]" if attempt > 1 else ""
-        logger.info(f"📤 已加入 {processor} 队列 (mode: {mode}){retry_tag}")
+        logger.info(f"📤 已加入 {processor} 队列{retry_tag}")
         self._notify_status()
 
     def _job_worker(self):
@@ -216,31 +236,12 @@ class VoiceAssistant:
                 self._notify_status()
 
     def _run_job(self, job: TranscriptionJob):
-        logger.info(
-            "🎧 开始处理音频 (processor=%s, mode=%s, 尝试 %d)",
-            job.processor,
-            job.mode,
-            job.attempt,
-        )
+        logger.info("🎧 开始处理音频 (processor=%s, 尝试 %d)", job.processor, job.attempt)
 
+        processors = {"openai": self.openai_processor, "local": self.local_processor}
         buffer = io.BytesIO(job.audio_bytes)
         try:
-            if job.processor == "openai":
-                processor_result = self.openai_processor.process_audio(
-                    buffer,
-                    mode=job.mode,
-                    prompt="",
-                    archive_path=job.archive_path,
-                )
-            elif job.processor == "local":
-                processor_result = self.local_processor.process_audio(
-                    buffer,
-                    mode=job.mode,
-                    prompt="",
-                    archive_path=job.archive_path,
-                )
-            else:
-                raise ValueError(f"未知的处理器: {job.processor}")
+            text, error = processors[job.processor].process_audio(buffer)
         except Exception as exc:  # noqa: BLE001
             logger.error(f"{job.processor} 转录发生异常: {exc}", exc_info=True)
             self._handle_transcription_failure(job, str(exc))
@@ -250,12 +251,6 @@ class VoiceAssistant:
                 buffer.close()
             except Exception:
                 pass
-
-        text, error = (
-            processor_result
-            if isinstance(processor_result, tuple)
-            else (processor_result, None)
-        )
 
         if error:
             logger.error(f"{job.processor} 转录失败: {error}")
@@ -268,9 +263,8 @@ class VoiceAssistant:
             text,
             service=service,
             model=model,
-            mode=job.mode,
         )
-        self.keyboard_manager.type_text(text, error)
+        self.keyboard_manager.type_text(text)
         logger.info(f"✅ 转录成功 (尝试 {job.attempt})")
         self._notify_status()
 
@@ -300,7 +294,6 @@ class VoiceAssistant:
         self._queue_job(
             job.audio_bytes,
             job.processor,
-            mode=job.mode,
             archive_path=job.archive_path,
             max_retries=next_retries,
             attempt=job.attempt + 1,
@@ -318,7 +311,6 @@ class VoiceAssistant:
         *,
         service: str,
         model: str,
-        mode: str = "transcriptions",
     ) -> None:
         if not archive_path or not transcription_result:
             return
@@ -327,14 +319,11 @@ class VoiceAssistant:
             transcription_result,
             service=service,
             model=model,
-            mode=mode,
         )
 
     def _get_job_cache_metadata(self, job: TranscriptionJob) -> tuple[str, str]:
         if job.processor == "openai":
-            service = getattr(self.openai_processor, "service_platform", "openai")
-            model = getattr(self.openai_processor, "DEFAULT_MODEL", "unknown") or "unknown"
-            return service, model
+            return "openai", self.openai_processor.DEFAULT_MODEL
 
         if job.processor == "local":
             model_path = getattr(self.local_processor, "model_path", "")
@@ -344,11 +333,11 @@ class VoiceAssistant:
         return job.processor, "unknown"
 
     def start_openai_recording(self):
-        """开始录音（OpenAI GPT-4o transcribe模式 - Ctrl+F）"""
+        """开始录音（OpenAI 批量模式，豆包不可用时的 Ctrl+F）"""
         self.audio_recorder.start_recording()
 
     def stop_openai_recording(self):
-        """停止录音并处理（OpenAI GPT-4o transcribe模式 - Ctrl+F）"""
+        """停止录音并排队转录（OpenAI 批量模式）"""
         audio = self.audio_recorder.stop_recording()
         if audio == "TOO_SHORT":
             logger.warning("录音时长太短，状态将重置")
@@ -372,14 +361,15 @@ class VoiceAssistant:
     def start_local_recording(self):
         """开始录音（本地 Whisper 模式 - Ctrl+I）"""
         if self.local_processor is None:
-            logger.warning("本地 Whisper 不可用，请使用 Ctrl+F (OpenAI) 模式")
-            self.status_controller.show_error("Local Whisper 不可用")
+            logger.warning("本地 Whisper 不可用，请使用 Ctrl+F 模式")
+            self.keyboard_manager.reset_state()
             return
         self.audio_recorder.start_recording()
 
     def stop_local_recording(self):
         """停止录音并处理（本地 Whisper 模式 - Ctrl+I）"""
         if self.local_processor is None:
+            self.keyboard_manager.reset_state()
             return
         audio = self.audio_recorder.stop_recording()
         if audio == "TOO_SHORT":
@@ -395,33 +385,6 @@ class VoiceAssistant:
 
         archive_path = self._archive_audio_bytes(audio_bytes)
         self._queue_job(audio_bytes, "local", archive_path=archive_path)
-
-    def start_translation_recording(self):
-        """开始录音（翻译模式）"""
-        self.audio_recorder.start_recording()
-
-    def stop_translation_recording(self):
-        """停止录音并处理（翻译模式）"""
-        audio = self.audio_recorder.stop_recording()
-        if audio == "TOO_SHORT":
-            logger.warning("录音时长太短，状态将重置")
-            self.keyboard_manager.reset_state()
-            return
-
-        audio_bytes = self._buffer_to_bytes(audio)
-        if not audio_bytes:
-            logger.error("没有录音数据，状态将重置")
-            self.keyboard_manager.reset_state()
-            return
-
-        archive_path = self._archive_audio_bytes(audio_bytes)
-        self._queue_job(
-            audio_bytes,
-            "openai",
-            mode="translations",
-            archive_path=archive_path,
-            max_retries=self.max_auto_retries,
-        )
 
     def start_doubao_streaming(self):
         """开始豆包流式识别"""
@@ -503,9 +466,8 @@ class VoiceAssistant:
                 text,
                 service="doubao",
                 model="bigmodel",
-                mode="transcriptions",
             )
-            self.keyboard_manager.type_text(text, None)
+            self.keyboard_manager.type_text(text)
             return True
 
         def on_preview_text(text: str):
@@ -545,7 +507,7 @@ class VoiceAssistant:
                 recovery_emitted = emit_streaming_text(recovery_text, f"error:{error}")
             self.floating_preview.hide()
             self.audio_recorder.reset_streaming_state(reason=f"豆包流式错误: {error}")
-            self.keyboard_manager.reset_state(restore_clipboard=not recovery_emitted)
+            self.keyboard_manager.reset_state()
             if recovery_emitted:
                 self.keyboard_manager.keep_clipboard_text(recovery_text)
 
@@ -574,10 +536,12 @@ class VoiceAssistant:
         if audio_bytes:
             self._current_streaming_archive_path = self._archive_audio_bytes(audio_bytes)
 
-    def reset_state(self):
-        """重置状态"""
-        self.keyboard_manager.reset_state()
-    
+        # 正常情况下由流式线程在收尾时 reset_state。流式线程根本没起来时
+        # （比如开流失败或卡死），没人会把状态拉回空闲，图标会一直停在"处理中"。
+        if not (self._streaming_thread and self._streaming_thread.is_alive()):
+            logger.warning("流式转录线程未在运行，直接恢复空闲状态")
+            self.keyboard_manager.reset_state()
+
     def run(self):
         """运行语音助手"""
         logger.info(f"=== 语音助手已启动 (v{__version__}) ===")
@@ -592,49 +556,28 @@ class VoiceAssistant:
         self.status_controller.start()
 
 def main():
-    # 判断是 OpenAI GPT-4o transcribe 还是 GROQ Whisper 还是 SiliconFlow 还是本地whisper.cpp
-    service_platform = os.getenv("SERVICE_PLATFORM", "siliconflow")
-    
-    # 支持 openai&local 双平台配置（我们的默认维护配置）
-    if service_platform == "openai&local" or service_platform == "openai":
-        # 双处理器架构：本身就有OpenAI + 本地whisper两个处理器
-        pass  # 直接使用下面的双处理器创建逻辑
-    elif service_platform == "groq":
-        audio_processor = WhisperProcessor()  # 使用 GROQ Whisper
-    elif service_platform == "siliconflow":
-        audio_processor = SenseVoiceSmallProcessor()
-    elif service_platform == "local":
-        audio_processor = LocalWhisperProcessor()
-    else:
-        raise ValueError(f"无效的服务平台: {service_platform}, 支持的平台: openai&local (推荐), openai, groq, siliconflow, local")
-    
     try:
-        # 创建三处理器架构：OpenAI + 本地 Whisper + 豆包流式
-        original_platform = os.environ.get("SERVICE_PLATFORM")
+        # OpenAI 批量转录：豆包不可用时 Ctrl+F 用它
+        try:
+            openai_processor = WhisperProcessor()
+        except ValueError as e:
+            logger.warning(f"OpenAI 转录不可用: {e}")
+            openai_processor = None
 
-        # 创建 OpenAI 处理器
-        os.environ["SERVICE_PLATFORM"] = "openai"
-        openai_processor = WhisperProcessor()
-
-        # 创建本地 Whisper 处理器（可选，如果不可用则跳过）
-        os.environ["SERVICE_PLATFORM"] = "local"
+        # 本地 whisper.cpp（Ctrl+I），没装就禁用
         try:
             local_processor = LocalWhisperProcessor()
         except FileNotFoundError as e:
             logger.warning(f"本地 Whisper 不可用，将禁用本地转录功能: {e}")
             local_processor = None
 
-        # 创建豆包流式处理器（可选，如果 API Key 未配置则跳过）
+        # 豆包流式识别（Ctrl+F 默认），没配密钥就退回 OpenAI
         doubao_processor = DoubaoStreamingProcessor()
         if not doubao_processor.is_available():
             logger.warning("豆包流式 ASR 不可用（未配置 API Key），将使用 OpenAI 作为默认转录服务")
             doubao_processor = None
-
-        # 恢复原始环境变量
-        if original_platform:
-            os.environ["SERVICE_PLATFORM"] = original_platform
-        else:
-            os.environ.pop("SERVICE_PLATFORM", None)
+        if doubao_processor is None and openai_processor is None:
+            raise RuntimeError("豆包和 OpenAI 的密钥都没有配置，请在 .env 里至少配置一个")
 
         assistant = VoiceAssistant(openai_processor, local_processor, doubao_processor)
         assistant.run()
@@ -642,13 +585,13 @@ def main():
         error_msg = str(e)
         if "Input event monitoring will not be possible" in error_msg:
             check_accessibility_permissions()
-            sys.exit(1)
         elif "无法访问音频设备" in error_msg:
             check_microphone_permissions()
-            sys.exit(1)
         else:
             logger.error(f"发生错误: {error_msg}", exc_info=True)
-            sys.exit(1)
+        flush_logs()
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

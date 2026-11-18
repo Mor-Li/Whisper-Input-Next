@@ -93,19 +93,12 @@ git clone https://github.com/Mor-Li/Whisper-Input-Next.git
 cd Whisper-Input-Next
 ```
 
-2. **Create Virtual Environment**
+2. **Install Dependencies** (requires [uv](https://docs.astral.sh/uv/))
 ```bash
-python -m .venv .venv
-source .venv/bin/activate  # macOS/Linux
-# or .venv\\Scripts\\activate  # Windows
+uv sync
 ```
 
-3. **Install Dependencies**
-```bash
-pip install -r requirements.txt
-```
-
-4. **Install Local whisper.cpp (Optional, required for local transcription)**
+3. **Install Local whisper.cpp4. **Install Local whisper.cpp (Optional, required for local transcription)**
 ```bash
 # Clone whisper.cpp repository
 git clone https://github.com/ggerganov/whisper.cpp.git
@@ -122,29 +115,30 @@ echo "Whisper CLI Path: $(pwd)/build/bin/whisper-cli"
 cd ..
 ```
 
-5. **Configure Environment Variables**
+4. **Configure Environment Variables**
 ```bash
 cp env.example .env
-# Edit .env file, configure necessary parameters:
-# - OFFICIAL_OPENAI_API_KEY: OpenAI API key (required)
-# - WHISPER_CLI_PATH: whisper.cpp executable path (required for local transcription)
-# - WHISPER_MODEL_PATH: whisper model file path (required for local transcription)
+# Edit .env: configure Doubao or OpenAI keys (at least one), see the Configuration Guide below
 ```
 
-6. **Run Program**
+5. **Run Program**
 ```bash
-python main.py
-# or use startup script
-chmod +x start.sh
-./start.sh
+./start.sh            # runs in a tmux session and attaches to it
+./start.sh --detach   # runs in the background only
 ```
+
+`start.sh` runs `scripts/supervise.sh` inside the tmux session `Whisper-Input-Next`. The supervisor restarts `main.py` whenever it exits abnormally. One known case: macOS CoreAudio sometimes never returns from stopping the microphone stream, after which no new recording can start in that process. The app detects this, waits for any in-flight transcription to finish, and exits with code 75 so the supervisor brings it back within a few seconds. Logs go to `logs/Whisper-Input-Next-<timestamp>.log`, and `logs/latest.log` points to the current run.
+
+6. **Start automatically at login (optional)**
+```bash
+./scripts/install_autostart.sh            # install a LaunchAgent
+./scripts/install_autostart.sh uninstall  # remove it
+```
+When started this way, macOS attributes microphone and Accessibility permissions to `tmux` rather than your terminal app. If the hotkey does nothing after a reboot, enable `tmux` under System Settings → Privacy & Security → Accessibility and Microphone.
 
 ### ⚠️ Important Notes
 
-**Required Configuration:**
-- `OFFICIAL_OPENAI_API_KEY`: OpenAI GPT-4o transcribe API key
-- `WHISPER_CLI_PATH`: Local whisper.cpp executable absolute path
-- `WHISPER_MODEL_PATH`: whisper model file path (relative to whisper.cpp root directory)
+**Required Configuration:** Doubao keys (`DOUBAO_APP_KEY`, `DOUBAO_ACCESS_KEY`) or `OFFICIAL_OPENAI_API_KEY`. `WHISPER_CLI_PATH` and `WHISPER_MODEL_PATH` are only needed for local transcription with Ctrl+I.
 
 **whisper.cpp Installation Guide:**
 1. Clone and compile from [whisper.cpp repository](https://github.com/ggerganov/whisper.cpp)
@@ -163,26 +157,25 @@ Configure the following parameters in the `.env` file:
 DOUBAO_APP_KEY=your_app_id_here        # APP ID from console
 DOUBAO_ACCESS_KEY=your_access_token_here  # Access Token from console
 
-# Transcription service selection: "doubao" (default, streaming) or "openai" (batch)
+# Transcription service for Ctrl+F: "doubao" (default, streaming) or "openai" (batch)
 TRANSCRIPTION_SERVICE=doubao
 
-# ============ OpenAI Configuration (Optional, for batch mode) ============
+# ============ OpenAI (fallback when Doubao is not configured) ============
 OFFICIAL_OPENAI_API_KEY=sk-proj-xxx
+CONVERT_TO_SIMPLIFIED=false   # convert Traditional Chinese output to Simplified
+AUTO_RETRY_LIMIT=5            # automatic retries on failure
 
 # ============ Local whisper.cpp (Optional, for Ctrl+I) ============
 WHISPER_CLI_PATH=/path/to/whisper.cpp/build/bin/whisper-cli
 WHISPER_MODEL_PATH=models/ggml-large-v3.bin
 
-# ============ Keyboard & System Configuration ============
+# ============ Hotkeys ============
+HOTKEY_MODIFIER=ctrl          # modifier + f / modifier + i
 TRANSCRIPTIONS_BUTTON=f
-TRANSLATIONS_BUTTON=ctrl
-SYSTEM_PLATFORM=mac  # mac/win
-
-# Feature switches
-CONVERT_TO_SIMPLIFIED=false
-ADD_SYMBOL=false
-OPTIMIZE_RESULT=false
+SYSTEM_PLATFORM=mac           # mac (Cmd+V to paste) / win (Ctrl+V)
 ```
+
+At least one of Doubao or OpenAI must be configured. See `env.example` for the full template.
 
 <a id="how-to-get-doubao-api-keys"></a>
 **How to get Doubao API keys**:
@@ -230,7 +223,7 @@ Add these aliases to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
 
 ```bash
 alias whisper_input='cd /path/to/Whisper-Input-Next && ./start.sh'
-alias whisper_input_off='tmux kill-session -t whisper-input'
+alias whisper_input_off='tmux kill-session -t Whisper-Input-Next'
 ```
 
 Replace `/path/to/Whisper-Input-Next` with your actual project path.
@@ -246,23 +239,9 @@ Replace `/path/to/Whisper-Input-Next` with your actual project path.
 
 ### Status Indicators
 
-The program displays concise status indicators at the cursor position during runtime:
+The menu bar icon shows the current state: idle, recording, or transcribing. Warnings and errors show there for two seconds. In Doubao mode a floating window previews the text while you speak. The final text is pasted at the cursor after you stop. Failed OpenAI transcriptions are retried automatically from the saved audio.
 
-| Status | Meaning | Action |
-|--------|---------|--------|
-| `0` | Recording | Press hotkey again to stop recording |
-| `1` | Transcribing | Please wait for transcription to complete |
-| `!` | Transcription failed/error | Press `Ctrl+F` again to retry (audio saved) |
-
-**Design Optimizations**:
-- Use concise numeric status, avoid complex emoji symbols
-- No system clipboard pollution, display only at cursor position
-- Clear and intuitive status, easy to quickly identify
-
-**Retry Mechanism Instructions**:
-- When transcription fails, the system saves the recording and displays `!` status
-- No need to re-record, simply press `Ctrl+F` to retry
-- Retry uses previously saved audio until transcription succeeds
+Click the menu bar icon to see usage: transcriptions today, in the last 7 and 30 days, all-time totals, a bar chart of the last 30 days, and a Quit item. The numbers come from the transcription cache `audio_archive/cache.json`.
 
 ## 📚 Feature Documentation
 
@@ -273,7 +252,6 @@ The program displays concise status indicators at the cursor position during run
 - [⚡ Async Transcription Queue](./docs/[V3.2.0]_ASYNC_TRANSCRIPTION_QUEUE.md) - *v3.2.0*
 - [🔔 Audio Device Disconnect Notification](./docs/device_notification.md)
 - [🖥️ macOS Status Bar Indicator](./docs/[V3.3.0]_STATUS_BAR.md) - *v3.3.0*
-- [📊 Status Display Improvements](./docs/[V3.0.0]_STATUS_DISPLAY_IMPROVEMENTS.md) - *v3.0.0*
 
 **macOS hotkey pitfalls**
 
@@ -282,14 +260,12 @@ The program displays concise status indicators at the cursor position during run
 
 **Project background**
 
-- [🔄 Branch Differences vs Upstream](./docs/[V3.0.0]_BRANCH_DIFFERENCES.md) - *v3.0.0*
 - [📋 Version Control Documentation](./docs/[V3.1.0]_VERSION_CONTROL.md) - *v3.1.0*
 - [📝 Release Notes v3.1.0](./docs/[V3.1.0]_RELEASE_NOTES.md)
 - [✍️ Why This Project (Chinese blog post)](./docs/[V3.0.0]_知乎blog.md)
 
 **Deprecated**
 
-- [🤖 Kimi Polish Integration](./docs/[DEPRECATED]_KIMI_USAGE.md)
 - [📄 Upstream Project README (archive)](./docs/[DEPRECATED]_README_upstream.md)
 
 ## 🛠️ Development Status
@@ -337,20 +313,14 @@ We welcome all forms of contributions! Whether it's:
 ### Development Environment Setup
 
 ```bash
-# Clone repository
 git clone https://github.com/Mor-Li/Whisper-Input-Next.git
 cd Whisper-Input-Next
-
-# Create development environment
-python -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Start development
-python main.py
+uv sync                 # creates .venv from pyproject.toml / uv.lock
+.venv/bin/python -m unittest discover -s test -p "test_*.py"
+./start.sh
 ```
+
+`test/` holds automated tests that use fakes only. `test/manual/` holds scripts that need a real microphone or real API keys. `tools/` holds standalone transcription scripts for audio files.
 
 ## 🙏 Acknowledgments
 
@@ -367,6 +337,13 @@ python main.py
 - **Feature Suggestions**: [Discussions](https://github.com/Mor-Li/Whisper-Input-Next/discussions)
 
 ## 📋 Changelog
+
+### v3.4.0 (2026-11-19)
+- **Fix the "spinning forever" freeze**: when macOS CoreAudio hangs while stopping the microphone, the app now restarts itself instead of staying stuck
+- **Supervisor and start at login**: `start.sh` runs the app under a restart loop, `scripts/install_autostart.sh` installs a LaunchAgent
+- **Cleanup**: removed unreachable features (translation mode, Kimi polish, GROQ/SiliconFlow, punctuation post-processing, PyQt control panel). They remain available at git tag `pre-cleanup-2026-11`
+- **Usage stats in the menu bar**: click the icon to see daily transcription counts and a 30-day bar chart
+- Dependencies moved to `pyproject.toml` + `uv.lock`
 
 ### v3.3.0 (2026-03-11)
 - **Two-pass recognition**: Enable `enable_nonstream` for sentence-level re-recognition with nostream model, significantly improving accuracy (e.g. "广告位" → "光标位置")

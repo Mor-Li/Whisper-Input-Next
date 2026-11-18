@@ -13,7 +13,6 @@ import json
 import struct
 import gzip
 import uuid
-import logging
 import time
 import math
 from typing import Optional, Callable, AsyncGenerator
@@ -213,8 +212,7 @@ class DoubaoStreamingProcessor:
         # 解析 message type
         if message_type == MessageType.SERVER_ERROR_RESPONSE:
             error_code = struct.unpack('>i', payload[:4])[0]
-            payload_size = struct.unpack('>I', payload[4:8])[0]
-            payload = payload[8:]
+            payload = payload[8:]  # 跳过错误码和 4 字节的 payload 长度
             if compression == CompressionType.GZIP and payload:
                 try:
                     payload = self._gzip_decompress(payload)
@@ -224,8 +222,7 @@ class DoubaoStreamingProcessor:
             return result
 
         if message_type == MessageType.SERVER_FULL_RESPONSE:
-            payload_size = struct.unpack('>I', payload[:4])[0]
-            payload = payload[4:]
+            payload = payload[4:]  # 跳过 4 字节的 payload 长度
 
         if not payload:
             return result
@@ -503,7 +500,7 @@ class DoubaoStreamingProcessor:
                 error_reported = True
 
         async def run_one_session(initial_replay_chunks: list[bytes]) -> tuple[bool, Optional[str], list[bytes]]:
-            nonlocal audio_exhausted, committed_text, latest_preview_text
+            nonlocal committed_text, latest_preview_text
 
             # 确保旧连接已清理
             if self._is_connected or self._ws or self._session:
@@ -564,7 +561,7 @@ class DoubaoStreamingProcessor:
                         raise RuntimeError(stream_error)
 
             async def receiver():
-                nonlocal committed_text, latest_preview_text, recv_count, session_text, stream_error
+                nonlocal latest_preview_text, recv_count, session_text, stream_error
                 logger.info("📥 开始接收结果...")
                 last_result_at = time.monotonic()
                 while True:
@@ -679,59 +676,3 @@ class DoubaoStreamingProcessor:
             report_error(f"处理失败: {e}")
         finally:
             await self.disconnect()
-
-
-# 测试用的简单命令行入口
-async def test_streaming(audio_file: str):
-    """测试流式转录"""
-    import soundfile as sf
-    import numpy as np
-
-    processor = DoubaoStreamingProcessor()
-
-    if not processor.is_available():
-        print("请配置 DOUBAO_APP_KEY 和 DOUBAO_ACCESS_KEY 环境变量")
-        return
-
-    # 读取音频文件
-    audio_data, sample_rate = sf.read(audio_file, dtype='int16')
-    if sample_rate != DEFAULT_SAMPLE_RATE:
-        print(f"警告: 采样率 {sample_rate} != {DEFAULT_SAMPLE_RATE}")
-
-    # 计算每包的采样点数
-    samples_per_chunk = int(DEFAULT_SAMPLE_RATE * SEGMENT_DURATION_MS / 1000)
-
-    async def audio_generator():
-        """模拟实时音频流"""
-        for i in range(0, len(audio_data), samples_per_chunk):
-            chunk = audio_data[i:i + samples_per_chunk]
-            yield chunk.tobytes()
-
-    def on_preview(text):
-        print(f"\r[预览] {text[:80]}", end="", flush=True)
-
-    def on_final(text):
-        print(f"\n[最终] {text}")
-
-    def on_complete():
-        print("[完成]")
-
-    def on_error(error):
-        print(f"\n[错误] {error}")
-
-    await processor.process_audio_stream(
-        audio_generator(),
-        on_preview,
-        on_final,
-        on_complete,
-        on_error
-    )
-
-
-if __name__ == "__main__":
-    import sys
-    if len(sys.argv) < 2:
-        print("用法: python doubao_streaming.py <音频文件>")
-        sys.exit(1)
-
-    asyncio.run(test_streaming(sys.argv[1]))

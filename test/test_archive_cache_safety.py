@@ -18,6 +18,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import unittest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REAL_CACHE = os.path.join(REPO, "audio_archive", "cache.json")
@@ -313,12 +314,24 @@ def test_concurrent_writes():
               f"缺失 {missing}" if missing else "20/20")
 
 
-for fn in (test_kill_during_write, test_concurrent_writes, test_corrupt_cache_with_backup,
-           test_corrupt_cache_without_backup, test_unreadable_cache_aborts_save,
-           test_sidecar_files_not_swallowed, test_real_cache_intact):
-    fn()
+def run_all():
+    for fn in (test_kill_during_write, test_concurrent_writes, test_corrupt_cache_with_backup,
+               test_corrupt_cache_without_backup, test_unreadable_cache_aborts_save,
+               test_sidecar_files_not_swallowed, test_real_cache_intact):
+        fn()
 
-print(f"\n{'='*60}\n通过 {len(PASS)} 项，失败 {len(FAIL)} 项")
-for name in FAIL:
-    print(f"  ❌ {name}")
-sys.exit(1 if FAIL else 0)
+    print(f"\n{'='*60}\n通过 {len(PASS)} 项，失败 {len(FAIL)} 项")
+    for name in FAIL:
+        print(f"  ❌ {name}")
+    return FAIL
+
+
+class ArchiveCacheSafetyTest(unittest.TestCase):
+    """让 unittest discover 也能跑这组检查。"""
+
+    def test_all_checks_pass(self):
+        self.assertEqual(run_all(), [])
+
+
+if __name__ == "__main__":
+    sys.exit(1 if run_all() else 0)

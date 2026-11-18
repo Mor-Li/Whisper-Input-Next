@@ -39,7 +39,7 @@
 ## ✨ 主要特性
 
 ### 🎯 核心功能
-- **多平台转录服务**: 支持OpenAI GPT-4o transcribe、GROQ、SiliconFlow、本地whisper.cpp
+- **多种转录服务**: 豆包流式识别（默认）、OpenAI GPT-4o transcribe、本地 whisper.cpp
 - **智能快捷键**: Ctrl+F (OpenAI高质量) / Ctrl+I (本地省钱模式)
 - **音频存档**: 自动保存所有录音，支持历史回放
 - **失败重试**: 智能错误处理和重试机制
@@ -68,19 +68,12 @@ git clone https://github.com/Mor-Li/Whisper-Input-Next.git
 cd Whisper-Input-Next
 ```
 
-2. **创建虚拟环境**
+2. **安装依赖**（需要先装 [uv](https://docs.astral.sh/uv/)）
 ```bash
-python -m venv venv
-source venv/bin/activate  # macOS/Linux
-# 或 venv\\Scripts\\activate  # Windows
+uv sync
 ```
 
-3. **安装依赖**
-```bash
-pip install -r requirements.txt
-```
-
-4. **安装本地whisper.cpp (可选，使用本地转录时需要)**
+3. **安装本地whisper.cpp4. **安装本地whisper.cpp (可选，使用本地转录时需要)**
 ```bash
 # 克隆whisper.cpp仓库
 git clone https://github.com/ggerganov/whisper.cpp.git
@@ -97,29 +90,30 @@ echo "Whisper CLI 路径: $(pwd)/build/bin/whisper-cli"
 cd ..
 ```
 
-5. **配置环境变量**
+4. **配置环境变量**
 ```bash
 cp env.example .env
-# 编辑 .env 文件，配置必要参数:
-# - OFFICIAL_OPENAI_API_KEY: OpenAI API密钥 (必需)
-# - WHISPER_CLI_PATH: whisper.cpp可执行文件路径 (使用本地转录时必需)
-# - WHISPER_MODEL_PATH: whisper模型文件路径 (使用本地转录时必需)
+# 编辑 .env：豆包或 OpenAI 的密钥至少配一个，详见下面的配置说明
 ```
 
-6. **运行程序**
+5. **运行程序**
 ```bash
-python main.py
-# 或使用启动脚本
-chmod +x start.sh
-./start.sh
+./start.sh            # 在 tmux 会话里启动，并进入界面
+./start.sh --detach   # 只在后台启动
 ```
+
+`start.sh` 会在 tmux 会话 `Whisper-Input-Next` 里运行守护脚本 `scripts/supervise.sh`。`main.py` 异常退出后，守护脚本会自动把它重新拉起。目前已知的一种情况是：macOS 的 CoreAudio 偶尔在关闭麦克风时永远不返回，之后这个进程再也开不了新的录音。程序检测到这种情况后，会等手上的转录做完，再以退出码 75 退出，几秒后由守护脚本重启。每次运行的日志在 `logs/Whisper-Input-Next-<时间>.log`，`logs/latest.log` 指向当前这一份。
+
+6. **开机自动启动（可选）**
+```bash
+./scripts/install_autostart.sh            # 安装 LaunchAgent
+./scripts/install_autostart.sh uninstall  # 卸载
+```
+这样启动时，macOS 会把麦克风和辅助功能权限算在 `tmux` 头上，而不是你的终端 app。如果重启电脑后按热键没反应，到「系统设置 → 隐私与安全性」的「辅助功能」和「麦克风」里给 `tmux` 打勾。
 
 ### ⚠️ 重要说明
 
-**必需配置项：**
-- `OFFICIAL_OPENAI_API_KEY`: OpenAI GPT-4o transcribe API密钥
-- `WHISPER_CLI_PATH`: 本地whisper.cpp可执行文件绝对路径
-- `WHISPER_MODEL_PATH`: whisper模型文件路径 (相对于whisper.cpp根目录)
+**必需配置项：** 豆包的 `DOUBAO_APP_KEY`、`DOUBAO_ACCESS_KEY`，或者 `OFFICIAL_OPENAI_API_KEY`，至少配一个。`WHISPER_CLI_PATH` 和 `WHISPER_MODEL_PATH` 只有用 Ctrl+I 本地转录时才需要。
 
 **whisper.cpp安装指南：**
 1. 从 [whisper.cpp仓库](https://github.com/ggerganov/whisper.cpp) 克隆并编译
@@ -133,31 +127,29 @@ chmod +x start.sh
 在 `.env` 文件中配置以下参数：
 
 ```bash
-# 服务平台选择 (推荐使用我们维护的双平台配置)
-SERVICE_PLATFORM=openai&local  # 我们主要维护的配置
+# ============ 豆包流式识别（推荐，默认）============
+DOUBAO_APP_KEY=your_app_id_here           # 火山引擎控制台的 APP ID
+DOUBAO_ACCESS_KEY=your_access_token_here  # 火山引擎控制台的 Access Token
 
-# OpenAI 配置 (必需)
+# Ctrl+F 用哪个服务：doubao（默认，边说边转）或 openai（录完整段再转）
+TRANSCRIPTION_SERVICE=doubao
+
+# ============ OpenAI（豆包没配置时的备用）============
 OFFICIAL_OPENAI_API_KEY=sk-proj-xxx
+CONVERT_TO_SIMPLIFIED=false   # 把繁体结果转成简体
+AUTO_RETRY_LIMIT=5            # 失败自动重试次数
 
-# 本地whisper.cpp配置 (使用本地转录时必需)
+# ============ 本地 whisper.cpp（Ctrl+I，可选）============
 WHISPER_CLI_PATH=/path/to/whisper.cpp/build/bin/whisper-cli
 WHISPER_MODEL_PATH=models/ggml-large-v3.bin
 
-# 键盘快捷键配置
+# ============ 热键 ============
+HOTKEY_MODIFIER=ctrl          # 修饰键 + f / 修饰键 + i
 TRANSCRIPTIONS_BUTTON=f
-TRANSLATIONS_BUTTON=ctrl
-SYSTEM_PLATFORM=mac  # mac/win
-
-# 功能开关
-CONVERT_TO_SIMPLIFIED=false
-ADD_SYMBOL=false
-OPTIMIZE_RESULT=false
+SYSTEM_PLATFORM=mac           # mac（Cmd+V 粘贴）/ win（Ctrl+V）
 ```
 
-**重要说明**: 
-- 本项目主要维护 `SERVICE_PLATFORM=openai&local` 配置
-- 这是我们推荐和测试最充分的配置
-- 其他单平台配置（groq、siliconflow等）仅作兼容性保留
+豆包和 OpenAI 至少要配置一个。完整模板见 `env.example`。
 
 ## 🐛 故障排查（踩坑记录）
 
@@ -193,7 +185,7 @@ ERROR - ❌ 豆包流式转录错误: 连接失败
 
 ```bash
 alias whisper_input='cd /path/to/Whisper-Input-Next && ./start.sh'
-alias whisper_input_off='tmux kill-session -t whisper-input'
+alias whisper_input_off='tmux kill-session -t Whisper-Input-Next'
 ```
 
 请将 `/path/to/Whisper-Input-Next` 替换为你的项目实际路径。
@@ -202,28 +194,14 @@ alias whisper_input_off='tmux kill-session -t whisper-input'
 
 | 快捷键 | 功能 | 服务 | 特点 |
 |--------|------|------|------|
-| `Ctrl+F` | 高质量转录 | OpenAI GPT-4o transcribe | 自带标点，质量最高 |
+| `Ctrl+F` | 实时流式转录 | 豆包 Seed ASR 2.0（默认） | 边说边出字，有浮动预览窗 |
 | `Ctrl+I` | 本地转录 | whisper.cpp | 离线处理，隐私保护 |
 
 ### 状态指示器
 
-程序运行时会在光标位置显示简洁的状态指示器：
+菜单栏图标显示当前状态：空闲、录音中、转录中。警告和错误会在那里显示两秒。豆包模式下，说话时有一个浮动小窗实时预览文字，停止后最终文本才粘贴到光标处。OpenAI 转录失败时会用已保存的录音自动重试。
 
-| 状态 | 含义 | 操作 |
-|------|------|------|
-| `0` | 正在录音 | 再次按快捷键停止录音 |
-| `1` | 正在转录 | 请等待转录完成 |
-| `!` | 转录失败/出错 | 再次按`Ctrl+F`重试（音频已保存） |
-
-**设计优化**：
-- 使用简洁数字状态，避免复杂emoji符号
-- 不污染系统剪贴板，只在光标位置显示
-- 状态清晰明了，便于快速识别
-
-**重试机制说明**：
-- 当转录失败时，系统会保存录音并显示`!`状态
-- 此时无需重新录音，直接按`Ctrl+F`即可重试
-- 重试会使用之前保存的音频，直到转录成功
+点一下菜单栏图标可以看使用统计：今天、最近 7 天、最近 30 天各转了多少条，累计条数和字数，最近 30 天每天条数的柱状图，最下面是「退出」。数字来自转录缓存 `audio_archive/cache.json`。
 
 ## 📚 功能文档
 
@@ -234,7 +212,6 @@ alias whisper_input_off='tmux kill-session -t whisper-input'
 - [⚡ 异步转录队列](./[V3.2.0]_ASYNC_TRANSCRIPTION_QUEUE.md) - *v3.2.0引入*
 - [🔔 音频设备断开通知](./device_notification.md)
 - [🖥️ macOS 状态栏指示器](./[V3.3.0]_STATUS_BAR.md) - *v3.3.0引入*
-- [📊 状态显示优化](./[V3.0.0]_STATUS_DISPLAY_IMPROVEMENTS.md) - *v3.0.0引入*
 
 **macOS 快捷键的坑**
 
@@ -243,14 +220,12 @@ alias whisper_input_off='tmux kill-session -t whisper-input'
 
 **项目背景**
 
-- [🔄 分支差异对比](./[V3.0.0]_BRANCH_DIFFERENCES.md) - *v3.0.0引入*
 - [📋 版本控制文档](./[V3.1.0]_VERSION_CONTROL.md) - *v3.1.0建立*
 - [📝 v3.1.0 更新说明](./[V3.1.0]_RELEASE_NOTES.md)
 - [✍️ 为什么做这个项目（知乎）](./[V3.0.0]_知乎blog.md)
 
 **已废弃**
 
-- [🤖 Kimi润色集成](./[DEPRECATED]_KIMI_USAGE.md)
 - [📄 上游原项目 README 存档](./[DEPRECATED]_README_upstream.md)
 
 ## 🛠️ 开发状态
@@ -260,7 +235,9 @@ alias whisper_input_off='tmux kill-session -t whisper-input'
 - [x] 双处理器架构 (云端+本地)
 - [x] 音频存档系统 + 转录缓存(cache.json)
 - [x] 智能重试机制 (多次失败循环重试)
-- [x] 状态显示优化 (0→1→!)
+- [x] 菜单栏状态图标
+- [x] 豆包流式识别和浮动预览窗
+- [x] 卡死自动重启和开机自启
 - [x] 本地whisper.cpp支持
 - [x] 项目文档完善
 
@@ -282,17 +259,14 @@ alias whisper_input_off='tmux kill-session -t whisper-input'
 
 ### 开发环境设置
 ```bash
-# 克隆项目
 git clone https://github.com/Mor-Li/Whisper-Input-Next.git
 cd Whisper-Input-Next
-
-# 设置开发模式
-pip install -r requirements.txt
-pip install -e .
-
-# 运行测试
-python -m pytest test/
+uv sync                 # 按 pyproject.toml / uv.lock 建 .venv
+.venv/bin/python -m unittest discover -s test -p "test_*.py"
+./start.sh
 ```
+
+`test/` 里是只用替身、能自动跑的测试。`test/manual/` 里是要真麦克风或真密钥的手动脚本。`tools/` 里是转录音频文件的独立脚本。
 
 ### 提交规范
 - feat: 新功能

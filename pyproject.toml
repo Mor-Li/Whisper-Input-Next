@@ -1,0 +1,35 @@
+[project]
+name = "whisper-input-next"
+version = "3.4.0"
+description = "macOS 语音输入：按热键说话，转录后粘贴到光标处。豆包流式识别为主，OpenAI 和本地 whisper.cpp 备用"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12,<3.13"
+# 版本按 2026-11 实际在用的环境固定，升级前先在本地跑一段时间确认没问题
+dependencies = [
+    "aiohttp==3.13.4",
+    "colorlog==6.9.0",
+    "numpy==2.2.1",
+    "openai==1.59.6",
+    "opencc-python-reimplemented==0.1.7",
+    "pynput==1.7.7",
+    "pyobjc-framework-applicationservices==10.3.2",
+    "pyobjc-framework-cocoa==10.3.2",
+    "pyobjc-framework-quartz==10.3.2",
+    "pyperclip==1.9.0",
+    "python-dotenv==1.0.1",
+    "sounddevice==0.5.1",
+    "soundfile==0.13.0",
+]
+
+[dependency-groups]
+# tools/ 里的独立转录脚本额外需要的包
+tools = [
+    "httpx==0.28.1",
+    "tqdm==4.67.1",
+]
+
+[tool.uv]
+package = false
+default-groups = ["tools"]
+python-preference = "only-managed"

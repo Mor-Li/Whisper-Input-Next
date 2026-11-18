@@ -10,7 +10,7 @@ import sys
 import threading
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -28,7 +28,7 @@ async def test_recorder_integration():
     print("=" * 50)
 
     # 读取测试音频
-    test_audio_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "audio", "test_audio.wav")
+    test_audio_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "assets", "audio", "test_audio.wav")
     if not os.path.exists(test_audio_path):
         print(f"❌ 测试音频不存在: {test_audio_path}")
         return False

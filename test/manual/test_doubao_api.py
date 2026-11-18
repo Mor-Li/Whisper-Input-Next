@@ -11,7 +11,7 @@ import os
 import sys
 
 # 添加项目根目录到路径
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -174,7 +174,7 @@ async def main():
         return False
 
     # 测试 2: 流式转录
-    test_audio = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "audio", "test_audio.wav")
+    test_audio = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "assets", "audio", "test_audio.wav")
     if os.path.exists(test_audio):
         stream_ok = await test_streaming_with_file(test_audio)
     else:

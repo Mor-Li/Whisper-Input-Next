@@ -28,7 +28,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # 直接导入豆包流式处理器
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.transcription.doubao_streaming import DoubaoStreamingProcessor, DEFAULT_SAMPLE_RATE, SEGMENT_DURATION_MS
 
 

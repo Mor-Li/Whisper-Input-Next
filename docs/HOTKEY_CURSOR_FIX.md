@@ -45,7 +45,7 @@ def _darwin_intercept(self, event_type, event):
 
 拦截的虚拟键码来自 `Controller._mapping`（unicode 字符 → 虚拟键码，随键盘布局），修饰键掩码来自一张 `Key → CGEventFlagMask` 映射表。因此：
 
-- `TRANSCRIPTIONS_BUTTON` 改成任意键（`b`、`j`、`f1`…）、`TRANSLATIONS_BUTTON` 改成任意修饰键（`ctrl`/`cmd`/`alt`/`shift`），拦截会**自动切换到对应键码与修饰键**，用户无需改代码。
+- `TRANSCRIPTIONS_BUTTON` 改成任意键（`b`、`j`、`f1`…）、`HOTKEY_MODIFIER`（旧名 `TRANSLATIONS_BUTTON`）改成任意修饰键（`ctrl`/`cmd`/`alt`/`shift`），拦截会**自动切换到对应键码与修饰键**，用户无需改代码。
 - 实测：`f+ctrl → [3,34]/Control`、`b+ctrl → [11,34]/Control`、`j+cmd → [34,38]/Command`、`f1+alt → [34,122]/Alt`（其中 `34` 是本地 Whisper 模式固定的 `i` 键）。
 
 ### 3. 把录音启停挪到后台线程，避免事件 tap 被超时禁用
