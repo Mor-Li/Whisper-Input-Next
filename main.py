@@ -117,32 +117,32 @@ class VoiceAssistant:
         # 初始化状态栏显示
         self._notify_status()
 
+    def _finish_recording(self, label: str) -> None:
+        """不经按键结束录音，走和手动再按一次热键相同的路径：存档音频、转录、写缓存。
+
+        以前录满最大时长时直接 abort，音频被丢掉；豆包流式那边照样把字打了出来，
+        但没有音频文件可挂，转录也就没写进 cache.json（2026-11-24 两段 10 分钟排练因此丢档）。
+        """
+        if self.keyboard_manager.finish_recording(label):
+            return
+        state = self.keyboard_manager.state
+        if state in (InputState.PROCESSING, InputState.PROCESSING_LOCAL):
+            # 同一瞬间手动按了停止，按键那条路径正在存档，这里不能去抢录音器
+            logger.info(f"{label}：已在手动停止中，交给按键路径处理")
+            return
+        if self.audio_recorder.recording:
+            # 键盘状态和录音器对不上，只能把麦克风关掉
+            logger.warning(f"{label}：键盘状态为 {state.name}，录音器却还在录，只关闭录音器")
+            self.audio_recorder.reset_streaming_state(reason=label, drain_queue=False)
+
     def _handle_auto_stop(self):
-        """处理自动停止录音的情况"""
-        logger.warning("⏰ 录音时间已达到最大限制，自动中止录音！")
-
-        # 中止录音（不进行转录）
-        if self._current_state == InputState.DOUBAO_STREAMING:
-            self.audio_recorder.stop_streaming_recording(abort=True)
-        else:
-            self.audio_recorder.stop_recording(abort=True)
-
-        # 重置键盘状态
-        self.keyboard_manager.reset_state()
-
-        logger.info("💡 录音已中止，状态已重置")
+        """录满最大时长：自动停止，已录内容照常存档和转录"""
+        self._finish_recording("录满最大时长，自动停止")
 
     def _handle_device_disconnect(self):
-        """处理设备断开时的录音停止（保存并转录已录制内容）"""
+        """设备断开：停止录音，已录内容照常存档和转录"""
         logger.warning("设备断开，触发停止录音并转录")
-
-        if self._current_state in (InputState.RECORDING, InputState.DOUBAO_STREAMING):
-            self._ctrl_f_stop()
-        elif self._current_state == InputState.RECORDING_LOCAL:
-            self.stop_local_recording()
-        else:
-            # 非录音状态，只重置
-            self.keyboard_manager.reset_state()
+        self._finish_recording("设备断开，自动停止")
 
     def _on_audio_wedged(self, reason: str):
         """CoreAudio 卡死：等手上的转录收尾后退出进程，由守护循环重新拉起。"""

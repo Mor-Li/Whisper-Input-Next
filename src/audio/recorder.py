@@ -1,4 +1,5 @@
 import io
+import os
 import asyncio
 import sounddevice as sd
 import numpy as np
@@ -39,6 +40,26 @@ class AudioRecorder:
     _pending_closures = 0
     _stream_lifecycle_lock = threading.Lock()
 
+    # 单次录音默认最长 30 分钟，.env 里用 MAX_RECORD_MINUTES 改。
+    # 上限是防忘了按停止，麦克风一直开着。录满后自动停止，已录内容照常存档和转录。
+    DEFAULT_MAX_RECORD_MINUTES = 30.0
+
+    @classmethod
+    def _read_max_record_duration(cls) -> float:
+        raw = os.getenv("MAX_RECORD_MINUTES", "").strip()
+        if not raw:
+            return cls.DEFAULT_MAX_RECORD_MINUTES * 60
+        try:
+            minutes = float(raw)
+        except ValueError:
+            minutes = 0
+        if minutes <= 0:
+            logger.warning(
+                f"MAX_RECORD_MINUTES={raw!r} 不是正数，改用默认 {cls.DEFAULT_MAX_RECORD_MINUTES:g} 分钟"
+            )
+            return cls.DEFAULT_MAX_RECORD_MINUTES * 60
+        return minutes * 60
+
     def __init__(self):
         self.recording = False
         self.audio_queue = queue.Queue()
@@ -47,7 +68,7 @@ class AudioRecorder:
         self.current_device = None
         self.record_start_time = None
         self.min_record_duration = 1.0  # 最小录音时长（秒）
-        self.max_record_duration = 600.0  # 最大录音时长（10分钟）
+        self.max_record_duration = self._read_max_record_duration()  # 最大录音时长（秒）
         self.auto_stop_timer = None  # 自动停止定时器
         self.auto_stop_callback = None  # 自动停止时的回调函数
         self.device_disconnect_callback = None  # 设备断开时的回调函数
@@ -60,7 +81,7 @@ class AudioRecorder:
         self._device_error_detected = False  # 标记是否检测到设备错误
         self._last_used_device = None  # 上次录音使用的设备（用于判断是否切换）
         self._check_audio_devices()
-        logger.info(f"初始化完成，最大录音时长: {self.max_record_duration/60:.1f}分钟")
+        logger.info(f"初始化完成，最大录音时长: {self.max_record_duration/60:g}分钟")
 
     # ------------------------------------------------------------------
     # CoreAudio 卡死检测
@@ -290,12 +311,19 @@ class AudioRecorder:
 
     def _auto_stop_recording(self):
         """自动停止录音（达到最大时长）"""
-        logger.warning(f"⏰ 录音已达到最大时长（{self.max_record_duration/60:.1f}分钟），自动中止录音")
+        minutes = self.max_record_duration / 60
+        logger.warning(f"⏰ 录音已达到最大时长（{minutes:g}分钟），自动停止，已录内容照常存档和转录")
 
         if self.auto_stop_callback:
             self.auto_stop_callback()
         else:
-            self.stop_recording(abort=True)
+            self.stop_recording()
+
+        self._send_notification(
+            title="录音已自动停止",
+            message=f"已录满 {minutes:g} 分钟，正在转录已录内容",
+            subtitle="达到最大时长",
+        )
 
     def set_auto_stop_callback(self, callback):
         """设置自动停止时的回调函数"""

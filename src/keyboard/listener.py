@@ -229,6 +229,24 @@ class KeyboardManager:
             self._set_state_async(processing_state)
             logger.info(f"⏹️ 停止录音（{label}）")
 
+    def finish_recording(self, label: str) -> bool:
+        """不经按键结束当前录音，效果和再按一次热键完全一样（存档、转录、写缓存）。
+
+        录满最大时长、设备断开时用。在调用方线程里同步执行。
+        返回 False 表示当前不在录音，什么都没做。
+        """
+        processing_state = {
+            InputState.RECORDING: InputState.PROCESSING,
+            InputState.RECORDING_LOCAL: InputState.PROCESSING_LOCAL,
+        }.get(self.state)
+        if processing_state is None:
+            return False
+        self.is_recording = False
+        self.last_key_time = time.time()
+        logger.info(f"⏹️ 停止录音（{label}）")
+        self.state = processing_state
+        return True
+
     def toggle_recording(self):
         """Ctrl+F：切换录音状态"""
         self._toggle(InputState.RECORDING, InputState.PROCESSING, "Ctrl+F")

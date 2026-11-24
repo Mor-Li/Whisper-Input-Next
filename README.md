@@ -74,7 +74,7 @@ This project is based on [ErlichLiu/Whisper-Input](https://github.com/ErlichLiu/
 
 ### 🔧 Technical Features
 - **Dual Processor Architecture**: Streaming + Batch processors working simultaneously
-- **Long Recordings**: Up to 10 minutes per recording
+- **Long Recordings**: Up to 30 minutes per recording by default (set `MAX_RECORD_MINUTES` in `.env`). When the limit is hit, recording stops and the audio is archived and transcribed as usual
 - **Menu Bar Status**: The icon shows idle / recording / transcribing, and the menu shows usage stats
 - **Self-Healing**: A supervisor loop restarts the app after a crash or a stuck microphone
 - **Cache System**: Audio archive with transcription result caching
@@ -293,7 +293,7 @@ Click the menu bar icon to see usage: transcriptions today, in the last 7 and 30
 - [x] Dual processor architecture
 - [x] Smart retry mechanism
 - [x] Project documentation improvement
-- [x] 10-minute recording limit protection
+- [x] Recording length limit (30 minutes by default, configurable) that stops and keeps the audio
 - [x] Status indicator delay optimization
 - [x] Audio format conversion support (m4a to wav)
 - [x] Bilingual documentation system
